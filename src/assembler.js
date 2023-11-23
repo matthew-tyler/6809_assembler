@@ -1,5 +1,5 @@
 import { lexer } from "./lexer";
-import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, inherent_only, relative_only, accumulators, psh, register_only } from "./constants";
+import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, inherent_only, relative_only, accumulators, psh, register_only, WORD } from "./constants";
 
 
 class Assembler {
@@ -40,31 +40,50 @@ class Assembler {
         console.log(this.lexer.formatError(this.current_token, message));
     }
 
+    reset(source) {
+        this.halt();
+        if (source) {
+            this.lexer.reset(source.toLowerCase())
+        } else {
+            this.lexer.reset();
+        }
+    }
+
+    halt() {
+        // to do 
+    }
+
     #handle_directive() {
         switch (this.current_token.value) {
             case 'org':
                 // sets the origin. I guess that just updates the PC?
                 this.#next();
                 if (this.current_token.type == 'INTEGER') {
-                    this.pc = this.current_token.value;
+                    this.pc = Math.abs(this.current_token.value);
                 }
                 break;
             case 'end':
                 // just end the assembler here. 
+                this.halt(); // not implemented
                 break;
             case 'setdp':
             case 'direct':
                 this.#next();
                 if (this.current_token.type == 'INTEGER') {
-                    this.dp = this.current_token.value;
+                    this.dp = Math.abs(this.current_token.value);
                 }
                 break;
             case 'rmb':
             case 'ds':
                 this.#next();
                 if (this.current_token.type == 'INTEGER') {
-                    this.pc += this.current_token.value;
+                    const num_bytes = Math.abs(this.current_token.value);
+                    this.pc += num_bytes;
+                    if (this.second_parse) {
+                        this.binary = this.binary.concat(new Array(num_bytes).fill(0));
+                    }
                 }
+
                 break;
             case 'var':
                 this.#handle_var();
@@ -256,13 +275,33 @@ class Assembler {
             switch (this.current_token.type) {
                 case 'STRING':
                     this.pc += this.current_token.value.length;
+                    if (this.second_parse) {
+                        // Convert the string into an array of ASCII values. 
+                        const asciiValues = Array.from(this.current_token.value, char => char.charCodeAt(0));
+                        this.binary = this.binary.concat(asciiValues);
+                    }
                     break;
                 case 'INTEGER':
-                    if (this.current_token.value >= 0 && this.current_token.value <= BYTE_MAX) {
-                        this.pc += size;
-                    } else if (this.current_token.value >= WORD_MIN && this.current_token.value <= WORD_MAX) {
-                        // should break on .byte (size == 1) and return an error. 
-                        this.pc += 2;
+                    if ((this.current_token.value >= 0 && this.current_token.value <= BYTE_MAX) && size === BYTE) {
+                        this.pc += BYTE; // Size of a byte
+                        if (this.second_parse) {
+                            this.binary.push(this.current_token.value & 0xFF); // Add the byte to the binary array
+                        }
+                    } else if ((this.current_token.value >= WORD_MIN && this.current_token.value <= WORD_MAX) && size === WORD) {
+                        this.pc += WORD; // Size of a word
+                        if (this.second_parse) {
+                            // Add the word to the binary array in two parts (high byte and low byte)
+                            this.binary.push((this.current_token.value >> 8) & 0xFF); // High byte
+                            this.binary.push(this.current_token.value & 0xFF); // Low byte
+                        }
+                    } else {
+                        this.#error("Value too large");
+                    }
+                case 'CHAR':
+                    this.pc += BYTE;
+                    if (this.second_parse) {
+                        // Convert the character to its ASCII value and add it to the binary array
+                        this.binary.push(this.current_token.value.charCodeAt(0));
                     }
                     break;
                 case 'COMMA':
@@ -405,7 +444,6 @@ class Assembler {
                     this.label_table[this.current_token.value] = this.pc;
                     break;
                 case 'DIRECTIVE':
-
                     this.#handle_directive();
                     break;
                 case 'OPCODE':
