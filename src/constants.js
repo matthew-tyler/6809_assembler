@@ -857,25 +857,25 @@ export const inherent_only = new Set([
 ]);
 
 export const relative_only = new Map([
-    ['bcc', { opcode: '$24', size: 1 }], // Branch if Carry Clear C=0
-    ['bcs', { opcode: '$25', size: 1 }], // Branch if Carry Set C=1
-    ['beq', { opcode: '$27', size: 1 }], // Branch if Equal Z=1
-    ['bge', { opcode: '$2C', size: 1 }], // Branch if Greater than or equal to zero
-    ['bgt', { opcode: '$2E', size: 1 }], // Branch if Greater than Zero
-    ['bhi', { opcode: '$22', size: 1 }], // Branch if Higher Z+C=0
-    ['bhs', { opcode: '$24', size: 1 }], // Branch if Higher or Same C=0
-    ['ble', { opcode: '$2F', size: 1 }], // Branch if Less than or Equal to Zero
-    ['blo', { opcode: '$25', size: 1 }], // Branch if Lower C=1
-    ['bls', { opcode: '$23', size: 1 }], // Branch if Lower or Same C+Z=1
-    ['blt', { opcode: '$2D', size: 1 }], // Branch if Less Than Zero
-    ['bmi', { opcode: '$2B', size: 1 }], // Branch if Minus N=1
-    ['bne', { opcode: '$26', size: 1 }], // Branch if Not Equal to Zero Z=0
-    ['bpl', { opcode: '$2A', size: 1 }], // Branch if Plus N=0
-    ['bra', { opcode: '$20', size: 1 }], // Branch Always
-    ['brn', { opcode: '$21', size: 1 }], // Branch Never
-    ['bsr', { opcode: '$8D', size: 1 }], // Branch to Subroutine
-    ['bvc', { opcode: '$28', size: 1 }], // Branch if Overflow Clear V=0
-    ['bvs', { opcode: '$29', size: 1 }], // Branch if Overflow Set V=1
+    ['bcc', { opcode: '$24', size: 2 }], // Branch if Carry Clear C=0
+    ['bcs', { opcode: '$25', size: 2 }], // Branch if Carry Set C=1
+    ['beq', { opcode: '$27', size: 2 }], // Branch if Equal Z=1
+    ['bge', { opcode: '$2C', size: 2 }], // Branch if Greater than or equal to zero
+    ['bgt', { opcode: '$2E', size: 2 }], // Branch if Greater than Zero
+    ['bhi', { opcode: '$22', size: 2 }], // Branch if Higher Z+C=0
+    ['bhs', { opcode: '$24', size: 2 }], // Branch if Higher or Same C=0
+    ['ble', { opcode: '$2F', size: 2 }], // Branch if Less than or Equal to Zero
+    ['blo', { opcode: '$25', size: 2 }], // Branch if Lower C=1
+    ['bls', { opcode: '$23', size: 2 }], // Branch if Lower or Same C+Z=1
+    ['blt', { opcode: '$2D', size: 2 }], // Branch if Less Than Zero
+    ['bmi', { opcode: '$2B', size: 2 }], // Branch if Minus N=1
+    ['bne', { opcode: '$26', size: 2 }], // Branch if Not Equal to Zero Z=0
+    ['bpl', { opcode: '$2A', size: 2 }], // Branch if Plus N=0
+    ['bra', { opcode: '$20', size: 2 }], // Branch Always
+    ['brn', { opcode: '$21', size: 2 }], // Branch Never
+    ['bsr', { opcode: '$8D', size: 2 }], // Branch to Subroutine
+    ['bvc', { opcode: '$28', size: 2 }], // Branch if Overflow Clear V=0
+    ['bvs', { opcode: '$29', size: 2 }], // Branch if Overflow Set V=1
     ['lbcc', { opcode: '$10 24', size: 4 }], // Long Branch if Carry Clear C=0
     ['lbcs', { opcode: '$10 25', size: 4 }], // Long Branch if Carry Set C=1
     ['lbeq', { opcode: '$10 27', size: 4 }], // Long Branch if Equal Z=1
