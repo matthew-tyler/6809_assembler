@@ -903,6 +903,7 @@ export const psh = new Set(['pshs', 'puls', 'pshu', 'pulu'])
 
 export const register_only = new Set(['tfr', 'exg']);
 
+export const BYTE_MIN = 0x00
 export const BYTE_MAX = 0xFF;
 export const WORD_MIN = 0x100;
 export const WORD_MAX = 0xFFFF;

@@ -1,19 +1,21 @@
 import { lexer } from "./lexer";
-import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, inherent_only, relative_only, accumulators, psh, register_only, WORD } from "./constants";
+import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, inherent_only, relative_only, accumulators, psh, register_only, WORD, BYTE_MIN } from "./constants";
 
 
 class Assembler {
 
     constructor(source) {
         this.lexer = lexer;
-        this.lexer.reset(source.toLowerCase())
+        this.source = source.toLowerCase();
+        this.lexer.reset(this.source)
         this.label_table = {};
+        this.const_table = {}
         this.pc = 0;
         this.dp = 0;
         this.binary = [];
         this.current_token = {};
 
-        this.second_parse = false;;
+        this.second_parse = false;
     }
 
     #next() {
@@ -40,13 +42,14 @@ class Assembler {
         console.log(this.lexer.formatError(this.current_token, message));
     }
 
-    reset(source) {
+    reset(new_source) {
         this.halt();
-        if (source) {
-            this.lexer.reset(source.toLowerCase())
-        } else {
-            this.lexer.reset();
+
+        if (new_source) {
+            this.source = new_source.toLowerCase()
         }
+
+        this.lexer.reset(this.source);
     }
 
     halt() {
@@ -179,13 +182,13 @@ class Assembler {
         while (this.#next()) {
 
             if (this.current_token.type === 'INTEGER') {
-                this.label_table[id] = this.current_token.value;
+                this.const_table[id] = this.current_token.value;
             } else if (this.current_token.type === 'IDENTIFIER') {
 
                 if (id === null) {
                     id = this.current_token.value;
                 } else {
-                    this.label_table[id] = this.label_table[this.current_token.value] || this.current_token.value;
+                    this.const_table[id] = this.const_table[this.current_token.value] || this.current_token.value;
                 }
 
             } else if (this.current_token.value === 'equ' || this.current_token.value === "=") {
@@ -215,14 +218,20 @@ class Assembler {
         }
 
 
-        while (this.#next()) {
 
+        while (this.#next()) {
+            console.log(this.binary);
             if (this.current_token.type === 'IDENTIFIER') {
-                // Add label to label_table with the current pc.
-                this.label_table[this.current_token.value] = this.pc;
+                // Add label to const_table with the current pc.
+                this.const_table[this.current_token.value] = this.pc;
 
                 // Increment the pc by varSize
-                this.pc += var_size;
+                this.pc += Math.abs(var_size);
+                // Handle the second pass for machine code generation
+                if (this.second_parse) {
+                    const reserved_space = new Array(Math.abs(var_size)).fill(0);
+                    this.binary = this.binary.concat(reserved_space);
+                }
             } else if (this.current_token.type === 'NL') {
 
                 break;
@@ -237,35 +246,41 @@ class Assembler {
     }
 
     #handle_fill() {
-        // this looks shit.
         this.#next();
 
-        let fill_byte = null;
-        let fill_count = null;
-
-        if (this.current_token.type == 'INTEGER') {
-            fill_byte = this.current_token.value;
-            this.#next();
-        } else {
-            this.#error("Expected byte value after fill directive, found.");
-            return; // Exit early
+        // Expect an integer for fill_byte
+        if (this.current_token.type !== 'INTEGER') {
+            this.#error("Expected byte value after fill directive.");
+            return;
+        }
+        let fill_byte = this.current_token.value;
+        if (fill_byte < BYTE_MIN || fill_byte > BYTE_MAX) {
+            this.#error("Byte value out of range (0-255).");
+            return;
         }
 
-        if (this.current_token.type === 'COMMA') {
-            this.#next();
-        } else {
-            this.#error("Expected comma after byte value in fill directive, found.");
-            return; // Exit early
+        // Expect a comma after fill_byte
+        this.#next();
+        if (this.current_token.type !== 'COMMA') {
+            this.#error("Expected comma after byte value in fill directive.");
+            return;
         }
 
-
-        if (this.current_token.type == 'INTEGER') {
-            fill_count = this.current_token.value;
-        } else {
-            this.#error("Unexpected token after fill directive.")
+        // Expect an integer for fill_count
+        this.#next();
+        if (this.current_token.type !== 'INTEGER') {
+            this.#error("Expected count value after comma in fill directive.");
+            return;
         }
+        let fill_count = this.current_token.value;
 
-        this.pc += fill_count
+        this.pc += fill_count;
+
+        // Handle machine code generation in second pass
+        if (this.second_parse) {
+            const fill_data = new Array(fill_count).fill(fill_byte);
+            this.binary = this.binary.concat(fill_data);
+        }
     }
 
     #handle_data(size) {
@@ -297,6 +312,7 @@ class Assembler {
                     } else {
                         this.#error("Value too large");
                     }
+                    break;
                 case 'CHAR':
                     this.pc += BYTE;
                     if (this.second_parse) {
@@ -458,13 +474,24 @@ class Assembler {
         }
     }
 
+    print_hex() {
+        const hex_array = this.binary.map(num => num.toString(16).padStart(2, '0').toUpperCase());
+        console.log(hex_array.join(' '));
+    }
+
+
     assemble() {
         this.#parse();
+
         this.second_parse = true;
+        this.lexer.reset(this.source);
+        this.#parse();
 
         console.log(this.label_table);
+        console.log(this.const_table)
+        this.print_hex()
 
-        // this.lexer().reset();
+        // 
         // this.#parse();
         // return this.binary;
     }
@@ -473,20 +500,9 @@ class Assembler {
 
 
 let input = `
-const asciiZero=48, asciiNine=+57, asciiEight=$38 
-const asciiSeven=0x37, asciiOne=%00110001, minusNineteen=-$13
-const PIA=$FF20
-
-start:  
-  ADDA [$1234]  ; test
-  lda #'9
-  lda #asciiZero
-  lda #asciiNine
-  lda #asciiEight
-  lda #asciiSeven
-  lda #asciiOne
-  lda #minusNineteen
-  ldb PIA+1
+var 1, xPos, yPos
+var 2, bitmapSize, bitmapAddress
+bitmap1:  dw %1111111111111111, %1000000000000001, %1000000000000001, %1111111111111111
 `
 
 const asm = new Assembler(input).assemble();
