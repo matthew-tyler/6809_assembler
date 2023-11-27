@@ -1,5 +1,5 @@
 import { lexer } from "./lexer";
-import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, inherent_only, relative_only, accumulators, psh, register_only, WORD, BYTE_MIN } from "./constants";
+import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, PB_REGISTERS, ACCUMULATOR_POSTBYTE, INC_DEC, inherent_only, relative_only, accumulators, psh, register_only, WORD, BYTE_MIN, opcodes, INTER_REGISTER_POSTBYTE, PSH_PUL_POSTBYTE } from "./constants";
 
 
 class Assembler {
@@ -113,68 +113,437 @@ class Assembler {
     }
 
     #handle_opcode() {
+
+
         if (inherent_only.has(this.current_token.value)) {
+            this.pc += BYTE; // I think these instructions are always 1 byte...
+
+            if (this.second_parse) {
+                const code = opcodes.get(this.current_token.value).inherent.code;
+                this.binary.push(code);
+            }
+
             this.#next();
             if (this.current_token.type !== 'NL') {
                 this.#error("Inherent instructions don't take arguments")
             }
 
-            this.pc += BYTE; // these instructions are always 1 byte
-
         } else if (relative_only.has(this.current_token.value)) {
-            this.#next();
 
-            this.pc += relative_only.get(this.current_token.value).size;
+            const instruction = opcodes.get(this.current_token.value);
+
+            this.#next();
+            this.pc += instruction.relative.size;
+
+            if (this.current_token.type !== "IDENTIFIER") {
+                this.#error("Branches require a label");
+            }
+
+            if (this.second_parse) {
+
+                this.binary.push(instruction.relative.code);
+
+                const address = this.label_table[this.current_token.value];
+
+                if (address === undefined) {
+                    this.#error("Label not defined");
+                }
+
+                let relative_offset = address - this.pc;
+
+                if (instruction.relative.size === 2) {
+
+                    if (relative_offset < -126 || relative_offset > 129) {
+                        this.#error("Branch offset out of range");
+                    }
+
+                    // Convert to two's complement if the offset is negative
+                    if (relative_offset < 0) {
+                        relative_offset = 256 + relative_offset; // Equivalent to (0x100 + relative_offset)
+                    }
+
+                    this.binary.push(relative_offset & 0xFF); // Add the offset as a single byte.
+
+                } else {
+
+                    // Handle 16-bit relative branches
+                    if (relative_offset < -32768 || relative_offset > 32767) {
+                        this.#error("Long branch offset out of range");
+                    }
+
+                    // Convert to two's complement if the offset is negative
+                    if (relative_offset < 0) {
+                        relative_offset = 65536 + relative_offset; // Convert to 16-bit two's complement
+                    }
+                    this.binary.push((relative_offset >> 8) & 0xFF); // High byte
+                    this.binary.push(relative_offset & 0xFF);        // Low byte
+                }
+
+            }
 
         } else if (register_only.has(this.current_token.value)) {
             // handle tfr and exg 
-            //  any register may be transferred to or exchanged with another of like size; i.e. 8-bit to 8-bit or 16-bit to 16-bit. 
-            this.#next();
-            // this.#expect("REGISTER")
-            this.#next();
-            // this.#expect("COMMA");
-            this.#next();
-            // this.#expect("REGISTER")
 
-            // needs to handle pre and post inc etc
+            const instruction = opcodes.get(this.current_token.value);
 
-            this.pc += 2 // both these of commands take 2 bytes.
+            this.#next();
 
-        } else if (psh.has(this.current_token.type)) {
+            const source_register = INTER_REGISTER_POSTBYTE[this.current_token.value]
+            if (source_register === undefined) {
+                this.#error("Should be a regiseter");
+            }
+            this.#next();
+
+            if (this.current_token.type !== 'COMMA') {
+                this.#error("Registers should be comma seperated");
+            }
+
+            this.#next();
+
+            const destination_register = INTER_REGISTER_POSTBYTE[this.current_token.value];
+
+            if (destination_register === undefined) {
+                this.#error("Should be a register")
+            }
+
+            this.pc += 2 // both of these commands take 2 bytes.
+
+            if (this.second_parse) {
+                const postbyte = source_register << 4 | destination_register;
+                this.binary.push(instruction.immediate.code, postbyte);
+            }
+
+
+        } else if (psh.has(this.current_token.value)) {
             // handle psh/pul
 
-            while (this.current_token.type !== 'NL') {
-                this.#next();
+            const psh_reg = this.current_token.value.charAt(3); // The magic number is just the final char of pshs/puls/pshu/pulu
+            const opcode = opcodes.get(this.current_token.value).immediate.code;
+            let postbyte = 0;
+
+
+            while (this.#next().type !== 'NL') {
+                if (this.current_token.type === 'COMMA') {
+                    continue;
+                }
+
+                const register = PSH_PUL_POSTBYTE[this.current_token.value];
+
+                if (register === undefined) {
+                    this.#error("Expecting a regiseter");
+                }
+
+                if (this.current_token.value === psh_reg) {
+                    this.#error("Can't push/pul to/from the same register")
+                }
+
+                postbyte |= register;
             }
+
+
 
             this.pc += WORD // which I think is just 2 bytes.
 
+            if (this.second_parse) {
+                this.binary.push(opcode, postbyte);
+            }
+
         } else {
 
-            let op = this.current_token.type;
+            const mnomnic = this.current_token.value;
+            const op = opcodes.get(mnomnic);
             this.#next();
 
             switch (this.current_token.type) {
+
+                case "IMMEDIATE":
+                    if (op.immediate === undefined) {
+                        this.#error(`Immediate addressing mode not allowed with ${mnomnic}`)
+                    }
+
+
+                    this.pc += op.immediate.size;
+
+                    let value = 0;
+                    let sign = 1; // janky as. 
+
+                    while (this.#next().type !== 'NL') {
+                        if (this.current_token.type === "INC") {
+                            continue;
+                        }
+
+                        // a not so elegant way to handle subtracting
+                        if (this.current_token.type == "DEC") {
+                            sign = -1;
+                            continue;
+                        }
+
+                        if (this.current_token.type !== "INTEGER" && this.current_token.type !== "IDENTIFIER") {
+                            this.#error("Expecting a value")
+                        }
+
+                        if (this.current_token.type === "INTEGER") {
+                            value += this.current_token.value;
+                        } else if (this.current_token.type === "IDENTIFIER") {
+                            value += (this.const_table[this.current_token.value] || this.label_table[this.current_token.value]) * sign;
+                            sign = 1;
+                        }
+                    }
+
+                    if (this.second_parse) {
+
+                        this.binary.push(op.immediate.code)
+
+                        if (op.immediate.size == 2) {
+                            this.binary.push(value & 0xFF)
+
+                        } else {
+                            this.binary.push((value >> 8) & 0xFF); // High byte
+                            this.binary.push(value & 0xFF);        // Low byte
+                        }
+
+
+                    }
+                    break;
+
                 case "INDIRECT_START":
                     // must be the start of an indirect
                     // The coming integers have no 5 bit offset. Otherwise is the same.
-                    this.#handle_args(op, "INDIRECT")
 
+                    this.#next();
+                    this.#handle_args(op, "INDIRECT");
                     break;
-                case "IMMEDIATE":
-                    this.#handle_args(op, "IMMEDIATE")
-                    break;
-
+                case "DIRECT":
+                case "EXT_DIR":
+                    this.#next();
+                    this.#handle_args(op, this.current_token.type);
                 default:
-                    // direct or extended. 
-                    // Direct is chosen if address is on the current page. DP is 0 by default.
-
-                    this.#handle_args(op, "INDEX")
-                    // console.log("Error?", this.current_token);
+                    this.#handle_args(op); // Mode currently undefined
                     break;
             }
 
         }
+
+    }
+
+    #handle_args(op, mode) {
+
+        let n = 0;
+        let register;
+        let postbyte;
+
+        /**
+         *  All operations from here on should come in the form OPCODE [POSTBYTE] [N]
+         *  Where I'm using n above to be N and the brackets to denote optional.
+         *  
+         *  The postbyte is determined in a couple of spots. 
+         *  
+         *  For forms ,R the postbtyte is determined in the swtich statement if we are register and the value
+         *  or postbyte hasn't already been set. The postbyte should then be x84
+         *  
+         *  For n,R there's some variations on the postbyte. If -16 to 15 then in form 0RRnnnnn
+         *  if -128 to 127 then in form 1RR01000 (x88 | RR)
+         *  if -32768 to 32767 then 1RR01001 (x89 | RR)
+         *  
+         * 
+         *  Accumulator offset postbyte follows the patterns
+         *  A,R = 1RR00110
+         *  B,R = 1RR00101
+         *  D,R = 1RR01011
+         *  
+         *  Inc/Dec
+         *  
+         *  ,R+ = 1RR00000
+         *  ,R++ = 1RR00001
+         *  ,-R = 1RR00010
+         *  ,--R = 1RR00011
+         * 
+         *  In Indirect mode only [,R++] and [,--R] are allowed.
+         * 
+         *  PCR offset comes in the form n,PCR in both 8 and 16 bit. 
+         * 
+         *  n,PCR -128 to 127 = 100011001
+         *  n,PCR -37768 to 32767 = 100011001
+         * 
+         *  For indirect forms the above just change the last bit after RR so 1RR01000 becomes 1RR11000
+         *  
+         *  
+         */
+
+
+        // A,R 
+        // n,R
+        // ,R
+        // n,pcr
+        // [n]
+        // with pre, post inc and dec
+
+        if (this.current_token.type !== 'COMMA') {
+            switch (this.current_token.type) {
+                case "CHAR": // I believe chars act just like numbers here. Needs a value transform
+                case "INTEGER":
+                    n = this.current_token.value;
+                    break;
+                case "REGISTER":
+                    if (accumulators.has(this.current_token.value)) {
+                        postbyte = ACCUMULATOR_POSTBYTE[this.current_token.value];
+                    } else {
+                        this.#error('Expecting value or an accumulator')
+                    }
+                    break;
+                case "IDENTIFIER":
+                    let value = this.label_table[this.current_token.value] || this.const_table[this.current_token.value];
+                    if (value === undefined) {
+
+                        if (this.second_parse) {
+                            this.#error('Unresolved label');
+                        }
+                        value = 0;
+                    }
+                    n = value;
+                    break;
+                default:
+                    this.#error('Unexpected token')
+                    break;
+
+            }
+        }
+        this.#next();
+
+        if (this.current_token.type === 'INDIRECT_END') {
+            // handle [n]
+            this.pc += (op.indexed.size + 2) // + 2 for the postbyte and arg
+            if (this.second_parse) {
+                this.binary.push(0x9F)
+                this.binary.push((n >> 8) & 0xFF); // High byte
+                this.binary.push(n & 0xFF);        // Low byte
+            }
+            return;
+
+        } else if (this.current_token.type === 'COMMA') {
+            this.#next();
+        }
+
+        if (this.current_token.type === 'DEC' || this.current_token.type === 'DEC2') {
+            if (this.current_token === 'DEC' && mode === 'INDIRECT') {
+                this.#error('-R and R+ not allowed in indirect')
+            }
+
+            if (postbyte) {
+                this.#error("Auto increment/decrement can't be used with an offset")
+            }
+
+            postbyte = INC_DEC[this.current_token.type];
+            this.#next();
+        }
+
+
+        if (this.current_token.type === 'REGISTER') {
+            if (accumulators.has(this.current_token.value)) {
+                this.#error("Expecting a register, either X, Y, U or S")
+            }
+
+            if (this.current_token.value === 'pcr') {
+
+                if (postbyte !== undefined) {
+                    this.#error("PCR should be used with an offset")
+                }
+
+                if (n >= -128 && n <= 127) {
+                    postbyte = 0x8D;
+                } else if (n >= -32768 && n <= 32767) {
+                    postbyte = 0x8E;
+                } else {
+                    this.#error("Number too large or small")
+                }
+
+            } else {
+                register = PB_REGISTERS[this.current_token.value];
+            }
+
+        } else {
+            this.#error(`Unexepceted argument ${this.current_token.text}`)
+        }
+
+        this.#next();
+        if (this.current_token.type === 'INC' || this.current_token.type === 'INC2') {
+            if (this.current_token === 'INC' && mode === 'INDIRECT') {
+                this.#error('-R and R+ not allowed in indirect')
+            }
+            if (postbyte) {
+                this.#error("Auto increment/decrement can't be used with an offset")
+            }
+            postbyte = INC_DEC[this.current_token.type];
+            this.#next();
+        }
+
+        if (this.current_token.type === 'INDIRECT_END' && mode !== 'INDIRECT') {
+            this.#error("Possibly missing [ at start of arguments");
+        }
+
+        if (this.current_token.type !== 'NL') {
+            this.#error('Unexpected token');
+        }
+
+
+        // must be indexed, so size is opcode + the size to rep the number
+        if (register) {
+            this.pc += op.indexed.size;
+
+            // This is in the case n,R or ,R 
+            if (!postbyte) {
+                if (n === 0) {
+                    // handle as 1RR00100
+                    postbyte = 0x84 | PB_REGISTERS[register];
+                } else if ((n >= -16 && n <= 15) && mode !== 'INDIRECT') {
+                    // The value fits in a 5-bit offset, indicating a total of 2 bytes
+                    // should be in the form 0RRnnnnn
+                    // Not available if in indirect mode
+                    postbyte = n | PB_REGISTERS[register];
+                } else if (n >= -128 && n <= 127) {
+
+                    this.pc += 1 // Adds 1 byte for handling the postbyte
+                    postbyte = 0x88 | PB_REGISTERS[register];
+
+                } else if (value >= -32768 && value <= 32767) {
+
+                    this.pc += 2 // adds 2 bytes for size + instruction.
+                    postbyte = 0x89 | PB_REGISTERS[register];
+                } else {
+                    console.log(this.current_token, "Number not right");
+                }
+            } else {
+                // This must be A,R for accumulator offset
+                // or auto inc/dec
+                postbyte = postbyte | PB_REGISTERS[register];
+            }
+
+            if (mode === 'INDIRECT') {
+                // set 00010000 for the indirect version of the postbyte
+                postbyte = postbyte | 0x10
+            }
+
+
+            if (this.second_parse) {
+
+                this.binary.push(op.indexed.code, postbyte)
+
+                if (n > 128) {
+                    this.binary.push((n >> 8) & 0xFF); // High byte
+                    this.binary.push(n & 0xFF);        // Low byte
+                } else {
+                    this.binary.push(n & 0xFF);
+                }
+
+            }
+
+        } else {
+
+            // I think must be pcr so I guess something needs calculating... 
+
+        }
+
+
 
     }
 
@@ -217,10 +586,8 @@ class Assembler {
 
         }
 
-
-
         while (this.#next()) {
-            console.log(this.binary);
+
             if (this.current_token.type === 'IDENTIFIER') {
                 // Add label to const_table with the current pc.
                 this.const_table[this.current_token.value] = this.pc;
@@ -331,128 +698,11 @@ class Assembler {
         }
     }
 
-    #handle_args(op, mode) {
 
-        let n;
-        let register;
-        let postbyte;
-
-        /**
-         *  All operations from here on should come in the form OPCODE [POSTBYTE] [N]
-         *  Where I'm using n above to be N and the brackets to denote optional.
-         *  
-         *  The postbyte is determined in a couple of spots. 
-         *  
-         *  For forms ,R the postbtyte is determined in the swtich statement if we are register and the value
-         *  or postbyte hasn't already been set. The postbyte should then be x84
-         *  
-         *  For n,R there's some variations on the postbyte. If -16 to 15 then in form 0RRnnnnn
-         *  if -128 to 127 then in form 1RR01000 (x88 | RR)
-         *  if -32768 to 32767 then 1RR01001 (x89 | RR)
-         *  
-         * 
-         *  Accumulator offset postbyte follows the patterns
-         *  A,R = 1RR00110
-         *  B,R = 1RR00101
-         *  D,R = 1RR01011
-         *  
-         *  Inc/Dec
-         *  
-         *  ,R+ = 1RR00000
-         *  ,R++ = 1RR00001
-         *  ,-R = 1RR00010
-         *  ,--R = 1RR00011
-         * 
-         *  In Indirect mode only [,R++] and [,--R] are allowed.
-         * 
-         *  PCR offset comes in the form n,PCR in both 8 and 16 bit. 
-         * 
-         *  n,PCR -128 to 127 = 100011001
-         *  n,PCR -37768 to 32767 = 100011001
-         * 
-         *  For indirect forms the above just change the last bit after RR so 1RR01000 becomes 1RR11000
-         *  
-         *  
-         */
-
-
-        this.#next();
-        // R,R 
-        // n,R
-        // ,R
-        // n,pcr
-        // with pre, post inc and dec
-
-
-        while (this.current_token.type !== "NL") {
-
-            switch (this.current_token.type) {
-                case "CHAR": // I believe chars act just like numbers here. Needs a value transform
-                case "INTEGER":
-
-                    let value = this.current_token.value;
-                    if (value >= -16 && value <= 15) {
-                        // The value fits in a 5-bit offset, indicating a total of 2 bytes
-                        this.pc += 2;
-                        // should be in the form 0RRnnnnn
-                        // Not available if in indirect mode
-                        postbyte = this.current_token.value;
-                    } else if (value >= -128 && value <= 127) {
-                        // The value fits in an 8-bit offset, indicating a total of 3 bytes
-                        this.pc += 3
-                        n = this.current_token.value;
-                        postbyte = 0x88 // needs the RR set.
-
-                    } else if (value >= -32768 && value <= 32767) {
-                        // The value fits in a 16-bit offset, indicating a total of 4 bytes
-                        this.pc += 4
-                        n = this.current_token.value;
-                        postbyte = 0x89 // needs the RR set.
-                    } else {
-                        console.log(this.current_token, "Number not right");
-                    }
-
-
-                    break;
-
-                case "REGISTER":
-
-                    if (accumulators.has(this.current_token.value)) {
-                        this.pc += 2; // this really only works if the it's not a long instruction.
-                    } else {
-                        if (!postbyte) {
-                            postbyte = 0x84;
-                        }
-                    }
-
-                    break;
-                case "IDENTIFIER":
-
-                    // if mode === immediate then it must be an 8 bit value. Otherwise assumed to be 2 bytes. 
-
-
-                    break;
-                case "COMMA":
-                    break;
-                case "INDIRECT_END":
-                    if (mode !== "INDIRECT") {
-                        console.log("ERROR, should be indirect", this.current_token);
-                    }
-                    break;
-                default:
-                    console.log("default args", this.current_token);
-                    break;
-
-            }
-
-            this.#next();
-        }
-    }
 
     #parse() {
 
         while (this.#next()) {
-
             // This switch statement should be the first token of each statement 
             // while helper functions will deal with each statement.
             switch (this.current_token.type) {
@@ -500,9 +750,8 @@ class Assembler {
 
 
 let input = `
-var 1, xPos, yPos
-var 2, bitmapSize, bitmapAddress
-bitmap1:  dw %1111111111111111, %1000000000000001, %1000000000000001, %1111111111111111
+const graphicsBase=$600, gLineBytes=$20
+ldx #graphicsBase-gLineBytes+1
 `
 
 const asm = new Assembler(input).assemble();

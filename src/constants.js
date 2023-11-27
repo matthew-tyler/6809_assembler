@@ -851,7 +851,6 @@ export const inherent_only = new Set([
     'sex',  // Opcode: $1D
     'swi',  // Opcode: $3F
     'sync', // Opcode: $13
-    'tfr',  // Opcode: $1F
     'tsta', // Opcode: $4D
     'tstb'  // Opcode: $5D
 ]);
@@ -922,12 +921,24 @@ export const PCR = 0x8D // PCR postbyte. Goes OPCODE POSTBYTE n.
 // So LDY $4007,pcr = 10 AE 8D 00 02 where the 00 02 is the distance between the address 4007 and the PC. Assuming default of 4000.
 // + 1 for 16 bit ofsets
 
+export const PB_REGISTERS = {
+    'x': 0x00, 'y': 0x20, 'u': 0x40, 's': 0x60, 'pc': 0x8C, 'PCR': 0x8D
+}
 
 // +, ++, -, --
 // In the form 0RR00000
 // This is non indirect. For indirect 0RR1000
 // [,R+] Not allowed
 // [,--R] not allowed
+
+export const INC_DEC = {
+    'INC': 0x80,
+    'INC2': 0x81,
+    'DEC': 0x82,
+    'DEC2': 0x83
+}
+
+export const ACCUMULATOR_POSTBYTE = { 'a': 0x86, 'b': 0x85, 'd': 0x8B }
 
 export const INC = 0x80;
 export const INC2 = 0x81
@@ -938,7 +949,7 @@ export const DEC2 = 0x83;
 // Inter register postbyts. The upper byte nyble is is the source reigseter and the lower nyble the destination.
 // So source register << 4 | Destination register will prodce correct code.
 export const INTER_REGISTER_POSTBYTE = {
-    'D': 0, 'X': 1, 'Y': 2, 'U': 3, 'S': 4, 'PC': 5, 'A': 8, 'B': 9, 'CC': 10, 'DP': 11
+    'd': 0, 'x': 1, 'y': 2, 'u': 3, 's': 4, 'pc': 5, 'a': 8, 'b': 9, 'cc': 10, 'dp': 11
 }
 
 // Used for PSH/PULL
@@ -946,15 +957,15 @@ export const INTER_REGISTER_POSTBYTE = {
 // PC | U/S | Y | X | DP | B | A | CC
 // So PSHS CC,A,B,DP,X,Y,U,PC would give 11111111
 export const PSH_PUL_POSTBYTE = {
-    'CC': 0x01,
-    'A': 0x02,
-    'B': 0x04,
-    'D': 0x06,
-    'DP': 0x08,
-    'X': 0x10,
-    'Y': 0x20,
-    'U': 0x40,
-    'S': 0x40,
-    'PC': 0x80
+    'cc': 0x01,
+    'a': 0x02,
+    'b': 0x04,
+    'd': 0x06,
+    'dp': 0x08,
+    'x': 0x10,
+    'y': 0x20,
+    'u': 0x40,
+    's': 0x40,
+    'pc': 0x80
 }
 
