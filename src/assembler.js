@@ -2,7 +2,7 @@ import { lexer } from "./lexer";
 import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, PB_REGISTERS, ACCUMULATOR_POSTBYTE, INC_DEC, inherent_only, relative_only, accumulators, psh, register_only, WORD, BYTE_MIN, opcodes, INTER_REGISTER_POSTBYTE, PSH_PUL_POSTBYTE } from "./constants";
 
 
-class Assembler {
+export class Assembler {
 
     constructor(source) {
         this.lexer = lexer;
@@ -10,7 +10,7 @@ class Assembler {
         this.lexer.reset(this.source)
         this.label_table = {};
         this.const_table = {}
-        this.pc = 0;
+        this.pc = 0x4000;
         this.dp = 0;
         this.binary = [];
         this.current_token = {};
@@ -114,6 +114,12 @@ class Assembler {
 
     #handle_opcode() {
 
+        // console.log('start');
+        // while (this.#next().type !== 'NL') {
+        //     console.log(this.current_token);
+        // }
+        // console.log('endl');
+        // return;
 
         if (inherent_only.has(this.current_token.value)) {
             this.pc += BYTE; // I think these instructions are always 1 byte...
@@ -307,9 +313,6 @@ class Assembler {
                     break;
 
                 case "INDIRECT_START":
-                    // must be the start of an indirect
-                    // The coming integers have no 5 bit offset. Otherwise is the same.
-
                     this.#next();
                     this.#handle_args(op, "INDIRECT");
                     break;
@@ -377,6 +380,7 @@ class Assembler {
         // n,pcr
         // [n]
         // with pre, post inc and dec
+        // extended such as jsr print
 
         if (this.current_token.type !== 'COMMA') {
             switch (this.current_token.type) {
@@ -393,6 +397,7 @@ class Assembler {
                     break;
                 case "IDENTIFIER":
                     let value = this.label_table[this.current_token.value] || this.const_table[this.current_token.value];
+                    // console.log(this.current_token, value);
                     if (value === undefined) {
 
                         if (this.second_parse) {
@@ -410,6 +415,44 @@ class Assembler {
         }
         this.#next();
 
+        if (this.current_token.type === 'NL') {
+
+            if (mode === 'DIRECT') {
+
+                if (op.direct === undefined) {
+                    this.#error('Direct addressing not allowed')
+                }
+
+                this.pc += this.op.direct.size;
+
+                if (this.second_parse) {
+                    this.binary.push(op.direct.code);
+                    this.binary.push(n & 0xFF); // low byte
+                }
+                // calc direct
+            } else {
+
+                // treat as extended.
+
+                if (op.extended === undefined) {
+                    this.#error("Extended addressing not allowed");
+                }
+
+                this.pc += op.extended.size;
+
+
+                if (this.second_parse) {
+                    this.binary.push(op.extended.code);
+                    this.binary.push((n >> 8) & 0xFF); // High byte
+                    this.binary.push(n & 0xFF); // low byte
+                }
+
+            }
+
+            return;
+
+        }
+
         if (this.current_token.type === 'INDIRECT_END') {
             // handle [n]
             this.pc += (op.indexed.size + 2) // + 2 for the postbyte and arg
@@ -425,7 +468,7 @@ class Assembler {
         }
 
         if (this.current_token.type === 'DEC' || this.current_token.type === 'DEC2') {
-            if (this.current_token === 'DEC' && mode === 'INDIRECT') {
+            if (this.current_token.type === 'DEC' && mode === 'INDIRECT') {
                 this.#error('-R and R+ not allowed in indirect')
             }
 
@@ -437,22 +480,22 @@ class Assembler {
             this.#next();
         }
 
-
         if (this.current_token.type === 'REGISTER') {
             if (accumulators.has(this.current_token.value)) {
                 this.#error("Expecting a register, either X, Y, U or S")
             }
 
             if (this.current_token.value === 'pcr') {
-
                 if (postbyte !== undefined) {
                     this.#error("PCR should be used with an offset")
                 }
 
                 if (n >= -128 && n <= 127) {
-                    postbyte = 0x8D;
+                    postbyte = 0x8C;
+                    this.pc += 1;
                 } else if (n >= -32768 && n <= 32767) {
-                    postbyte = 0x8E;
+                    postbyte = 0x8D;
+                    this.pc += 2;
                 } else {
                     this.#error("Number too large or small")
                 }
@@ -463,9 +506,11 @@ class Assembler {
 
         } else {
             this.#error(`Unexepceted argument ${this.current_token.text}`)
+
         }
 
         this.#next();
+
         if (this.current_token.type === 'INC' || this.current_token.type === 'INC2') {
             if (this.current_token === 'INC' && mode === 'INDIRECT') {
                 this.#error('-R and R+ not allowed in indirect')
@@ -486,8 +531,37 @@ class Assembler {
         }
 
 
+
+        /// no cur token under here?
+
+        if (mode === "DIRECT") {
+
+            if (op.direct === undefined) {
+                this.#error(`${op.value} has no direct mode`)
+            }
+
+            this.pc += op.direct.size;
+
+            if (this.second_parse) {
+                this.binary.push(op.direct.code);
+                this.binary.push(n & 0xFF);
+            }
+
+        } else if (mode === "EXT_DIR") {
+            if (op.extended === undefined) {
+                this.#error(`${op.value} has no extended mode`)
+            }
+
+            this.pc += op.extended.size;
+
+            if (this.second_parse) {
+                this.binary.push(op.extended.code);
+                this.binary.push((n >> 8) & 0xFF); // High byte
+                this.binary.push(n & 0xFF); // low byte
+            }
+        }
         // must be indexed, so size is opcode + the size to rep the number
-        if (register) {
+        else if (register) {
             this.pc += op.indexed.size;
 
             // This is in the case n,R or ,R 
@@ -528,7 +602,7 @@ class Assembler {
 
                 this.binary.push(op.indexed.code, postbyte)
 
-                if (n > 128) {
+                if (n > 127) {
                     this.binary.push((n >> 8) & 0xFF); // High byte
                     this.binary.push(n & 0xFF);        // Low byte
                 } else {
@@ -539,7 +613,46 @@ class Assembler {
 
         } else {
 
-            // I think must be pcr so I guess something needs calculating... 
+            this.pc += op.indexed.size;
+
+            // console.log(this.current_token);
+            if (postbyte === 0x8C) {
+
+
+
+
+                if (n & 0x80) { // Checks if the 8th bit is set (for 8-bit numbers)
+                    n = (~n) & 0xFF; // Invert all bits and limit to 8 bits
+                    n = (n + 1) & 0xFF; // Add 1 and limit to 8 bits
+                }
+
+                if (this.second_parse) {
+                    this.binary.push(op.indexed.code, postbyte)
+                    this.binary.push(n & 0xFF); // low byte
+                }
+
+            } else if (postbyte === 0x8D) {
+
+                // console.log(this.pc);
+                n = n - this.pc;
+                // console.log(n);
+                // if (n < -0x8000) {
+                //     n += 0x10000;
+                // }
+
+                // if (n & 0x8000) { // Checks if the 16th bit is set (for 16-bit numbers)
+                //     n = (~n) & 0xFFFF; // Invert all bits and limit to 16 bits
+                //     n = (n + 1) & 0xFFFF; // Add 1 and limit to 16 bits
+                // }
+
+                if (this.second_parse) {
+                    this.binary.push(op.indexed.code, postbyte)
+                    this.binary.push((n >> 8) & 0xFF); // High byte
+                    this.binary.push(n & 0xFF); // low byte
+                }
+
+            }
+
 
         }
 
@@ -652,7 +765,7 @@ class Assembler {
 
     #handle_data(size) {
         //size is either a byte (1) or word (2)
-        while (this.#next()) {
+        while (this.#next().type !== 'NL') {
 
             switch (this.current_token.type) {
                 case 'STRING':
@@ -688,7 +801,6 @@ class Assembler {
                     }
                     break;
                 case 'COMMA':
-                case 'NL':
                     continue;
                 default:
                     this.#error("Unexpected token in data directive.");
@@ -707,6 +819,7 @@ class Assembler {
             // while helper functions will deal with each statement.
             switch (this.current_token.type) {
                 case 'LABEL':
+                    // console.log('top_label', this.current_token, this.pc)
                     this.label_table[this.current_token.value] = this.pc;
                     break;
                 case 'DIRECTIVE':
@@ -717,7 +830,6 @@ class Assembler {
                     break;
                 case 'IDENTIFIER':
                     // will handle const, equ and =
-                    // console.log(this.current_token);
                     this.#handle_equ(this.current_token.value);
                     break;
             }
@@ -732,9 +844,10 @@ class Assembler {
 
     assemble() {
         this.#parse();
-
+        console.log(this.label_table);
         this.second_parse = true;
         this.lexer.reset(this.source);
+        this.pc = 0x4000 - 1;
         this.#parse();
 
         console.log(this.label_table);
@@ -750,8 +863,31 @@ class Assembler {
 
 
 let input = `
-const graphicsBase=$600, gLineBytes=$20
-ldx #graphicsBase-gLineBytes+1
+start:
+    leay helloworld,pcr
+    jsr print
+    rts
+
+const textscreenbase=$400
+
+print:
+    pshs a,x,y
+    ldx #textscreenbase
+printloop:
+    lda ,y+
+    beq printover
+    cmpa #$40
+    bhs print6847
+    adda #$40
+print6847:
+    sta ,x+
+    bra printloop
+printover:
+    puls a,x,y
+    rts
+
+helloworld:
+    fcb "HELLO WORLD",0
 `
 
 const asm = new Assembler(input).assemble();
