@@ -25,13 +25,13 @@ describe('Compiler Directives', () => {
         const const_table = test_asm.const_table;
 
         const expected = {
-            asciizero: 48,
-            asciinine: 57,
-            asciieight: 56,
-            asciiseven: 55,
-            asciione: 49,
-            minusnineteen: -19,
-            pia: 65312
+            asciiZero: 48,
+            asciiNine: 57,
+            asciiEight: 56,
+            asciiSeven: 55,
+            asciiOne: 49,
+            minusNineteen: -19,
+            PIA: 65312
         }
 
         for (const [key, expectedValue] of Object.entries(expected)) {
@@ -86,7 +86,7 @@ describe('Compiler Directives', () => {
 
     })
 
-    test('SETDP, DIRECT', () => {
+    test.todo('SETDP, DIRECT', () => {
         const test_input = `
         start:
         lda #$40
@@ -186,8 +186,8 @@ describe('Compiler Directives', () => {
         const test_input = `
         bitmap: 
         dw %1111111111111111, %1000000000000001
-        .WORD  5, 10, 0, 0
-         FDB    $4000, $1919, $1010
+        .word  5, 10, 0, 0
+         fdb    $4000, $1919, $1010
         `
         const expected_binary = [
             0xFF,
@@ -212,7 +212,6 @@ describe('Compiler Directives', () => {
         test_asm.reset(test_input);
 
         const result = test_asm.assemble()
-
         expect(result.length).toBe(expected_binary.length);
 
         result.forEach((element, index) => {

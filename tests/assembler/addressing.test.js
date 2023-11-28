@@ -150,7 +150,9 @@ describe("Extended Addressing Modes", () => {
         ]
         test_asm.reset(test_input);
 
+
         const result = test_asm.assemble()
+
 
         expect(result.length).toBe(expected_binary.length);
 
@@ -240,4 +242,575 @@ describe("Inherent Addressing Modes", () => {
 
     })
 
+})
+
+
+describe("Indexed Addressing Modes", () => {
+
+    test(",R", () => {
+
+        const test_input = `
+        leax ,y
+        leay ,x
+        leax ,u
+        leax ,x
+        leay ,s
+        `
+        const expected_binary = [
+            0x30,
+            0xA4,
+            0x31,
+            0x84,
+            0x30,
+            0xC4,
+            0x30,
+            0x84,
+            0x31,
+            0xE4
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+
+    test("5 bit n,R", () => {
+
+        const test_input = `
+        leax -16,y
+        leay -10,x
+        leax 3,u
+        leax 14,x
+        leay $02,s
+        `
+        const expected_binary = [
+            0x30,
+            0x30,
+            0x31,
+            0x16,
+            0x30,
+            0x43,
+            0x30,
+            0x0E,
+            0x31,
+            0x62
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+    })
+
+    test("8 bit n,R", () => {
+
+        const test_input = `
+        leax -100,y
+        leay -128,x
+        leax 16,u
+        leax 100,x
+        leay 127,s
+        `
+        const expected_binary = [
+            0x30,
+            0xA8,
+            0x9C,
+            0x31,
+            0x88,
+            0x80,
+            0x30,
+            0xC8,
+            0x10,
+            0x30,
+            0x88,
+            0x64,
+            0x31,
+            0xE8,
+            0x7F
+        ]
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+    })
+
+
+    test("16 bit n,R", () => {
+
+        const test_input = `
+        leax -3000,y
+        leay -32768,x
+        leax -129,u
+        leax 128,x
+        leay 32767,s
+        `
+        const expected_binary = [
+            0x30,
+            0xA9,
+            0xF4,
+            0x48,
+            0x31,
+            0x89,
+            0x80,
+            0x00,
+            0x30,
+            0xC9,
+            0xFF,
+            0x7F,
+            0x30,
+            0x89,
+            0x00,
+            0x80,
+            0x31,
+            0xE9,
+            0x7F,
+            0xFF
+        ]
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+    })
+
+
+    test("Accumulator offset", () => {
+
+        const test_input = `
+        leax a,y
+        leay b,x
+        leax d,u
+        leax a,x
+        leay b,s
+        `
+        const expected_binary = [
+            0x30,
+            0xA6,
+            0x31,
+            0x85,
+            0x30,
+            0xCB,
+            0x30,
+            0x86,
+            0x31,
+            0xE5
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+    test("Auto inc/dec", () => {
+
+        const test_input = `
+        leax ,y+
+        leay ,x++
+        leax ,-u
+        leax ,--x
+        `
+        const expected_binary = [
+            0x30,
+            0xA0,
+            0x31,
+            0x81,
+            0x30,
+            0xC2,
+            0x30,
+            0x83
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+    test("8 bit n,PCR", () => {
+
+        const test_input = `
+        leax -128,pcr
+        leay -100,pcr
+        leax 100,pcr
+        leax 127,pcr
+        `
+        const expected_binary = [
+            0x30,
+            0x8D,
+            0xBF,
+            0x7C,
+            0x31,
+            0x8D,
+            0xBF,
+            0x94,
+            0x30,
+            0x8D,
+            0xC0,
+            0x58,
+            0x30,
+            0x8D,
+            0xC0,
+            0x6F
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+    test("16 bit n,PCR", () => {
+
+        const test_input = `
+        leax -32768,pcr
+        leay -129,pcr
+        leax 128,pcr
+        leax 32767,pcr
+        `
+        const expected_binary = [
+            0x30,
+            0x8D,
+            0x3F,
+            0xFC,
+            0x31,
+            0x8D,
+            0xBF,
+            0x77,
+            0x30,
+            0x8D,
+            0xC0,
+            0x74,
+            0x30,
+            0x8D,
+            0x3F,
+            0xEF
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+})
+
+
+describe("Indirect Indexed Addressing Modes", () => {
+
+    test("[,R]", () => {
+
+        const test_input = `
+        leax [,y]
+        leay [,x]
+        leax [,u]
+        leax [,x]
+        leay [,s]
+        `
+        const expected_binary = [
+            0x30,
+            0xB4,
+            0x31,
+            0x94,
+            0x30,
+            0xD4,
+            0x30,
+            0x94,
+            0x31,
+            0xF4
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+
+    test("8 bit [n,R]", () => {
+
+        const test_input = `
+        leax [-100,y]
+        leay [-128,x]
+        leax [16,u]
+        leax [100,x]
+        leay [127,s]
+        `
+        const expected_binary = [
+            0x30,
+            0xB8,
+            0x9C,
+            0x31,
+            0x98,
+            0x80,
+            0x30,
+            0xD8,
+            0x10,
+            0x30,
+            0x98,
+            0x64,
+            0x31,
+            0xF8,
+            0x7F
+        ]
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+    })
+
+
+    test("16 bit [n,R]", () => {
+
+        const test_input = `
+        leax [-3000,y]
+        leay [-32768,x]
+        leax [-129,u]
+        leax [128,x]
+        leay [32767,s]
+        `
+        const expected_binary = [
+            0x30,
+            0xB9,
+            0xF4,
+            0x48,
+            0x31,
+            0x99,
+            0x80,
+            0x00,
+            0x30,
+            0xD9,
+            0xFF,
+            0x7F,
+            0x30,
+            0x99,
+            0x00,
+            0x80,
+            0x31,
+            0xF9,
+            0x7F,
+            0xFF
+        ]
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+    })
+
+
+    test("Indirect Accumulator offset", () => {
+
+        const test_input = `
+        leax [a,y]
+        leay [b,x]
+        leax [d,u]
+        leax [a,x]
+        leay [b,s]
+        `
+        const expected_binary = [
+            0x30,
+            0xB6,
+            0x31,
+            0x95,
+            0x30,
+            0xDB,
+            0x30,
+            0x96,
+            0x31,
+            0xF5
+        ]
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+    test("Indirect Auto inc/dec", () => {
+
+        const test_input = `
+        leay [,x++]
+        leax [,--x]
+        `
+        const expected_binary = [
+            0x31,
+            0x91,
+            0x30,
+            0x93
+        ]
+
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+    test("8 bit [n,PCR]", () => {
+
+        const test_input = `
+        leax [-128,pcr]
+        leay [-100,pcr]
+        leax [100,pcr]
+        leax [127,pcr]
+        `
+        const expected_binary = [
+            0x30,
+            0x9D,
+            0xBF,
+            0x7C,
+            0x31,
+            0x9D,
+            0xBF,
+            0x94,
+            0x30,
+            0x9D,
+            0xC0,
+            0x58,
+            0x30,
+            0x9D,
+            0xC0,
+            0x6F
+        ]
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+    test("16 bit [n,PCR]", () => {
+
+        const test_input = `
+        leax [-32768,pcr]
+        leay [-129,pcr]
+        leax [128,pcr]
+        leax [32767,pcr]
+        `
+        const expected_binary = [
+            0x30,
+            0x9D,
+            0x3F,
+            0xFC,
+            0x31,
+            0x9D,
+            0xBF,
+            0x77,
+            0x30,
+            0x9D,
+            0xC0,
+            0x74,
+            0x30,
+            0x9D,
+            0x3F,
+            0xEF
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+    })
+
+    test("[n]", () => {
+        const test_input = `
+        leax [100]
+        `
+        const expected_binary = [
+            0x30, 0x9F, 0x64, 0x00
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+
+        expect(result.length).toBe(expected_binary.length);
+
+        result.forEach((element, index) => {
+            expect(element).toBe(expected_binary[index]);
+        });
+
+
+
+    })
 })

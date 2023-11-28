@@ -41,6 +41,11 @@ describe("Full Programs", () => {
 
         const result = test_asm.assemble()
 
+        console.log(expected_binary);
+        console.log(result);
+        console.log(test_asm.label_table);
+
+
         expect(result.length).toBe(expected_binary.length);
 
         result.forEach((element, index) => {

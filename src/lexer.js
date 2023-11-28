@@ -4,7 +4,7 @@ const opcodes = ['neg', 'com', 'lsr', 'ror', 'asr', 'asl', 'lsl', 'rol', 'dec', 
 const registers = ["cc", "a", "b", "dp", "x", "y", "u", "s", "pc", "d", "pcr"];
 const directives = [
     ".byte", "equ", "const", "org", "end", "rmb", "ds", "var", "setdp", "direct", "fill",
-    "db", "fcb", "fcc", "dw", "fdb", ".word"
+    "db", "fcb", "fcc", "dw", "fdb", ".word", ".WORD", "FDB"
 ];
 
 

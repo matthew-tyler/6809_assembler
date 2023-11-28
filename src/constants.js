@@ -850,6 +850,8 @@ export const inherent_only = new Set([
     'rts',  // Opcode: $39
     'sex',  // Opcode: $1D
     'swi',  // Opcode: $3F
+    'swi2',
+    'swi3',
     'sync', // Opcode: $13
     'tsta', // Opcode: $4D
     'tstb'  // Opcode: $5D
