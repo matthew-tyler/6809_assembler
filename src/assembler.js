@@ -4,18 +4,9 @@ import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, PB_REGISTERS, ACCUMULATOR_POSTBYTE,
 
 export class Assembler {
 
-    constructor(source) {
+    constructor(source, base_address) {
         this.lexer = lexer;
-        this.source = source.toLowerCase();
-        this.lexer.reset(this.source)
-        this.label_table = {};
-        this.const_table = {}
-        this.pc = 0x4000;
-        this.dp = 0;
-        this.binary = [];
-        this.current_token = {};
-
-        this.second_parse = false;
+        this.reset(source, base_address)
     }
 
     #next() {
@@ -37,19 +28,41 @@ export class Assembler {
         }
     }
 
+    #insert_binary(...values) {
 
-    #error(message) {
-        console.log(this.lexer.formatError(this.current_token, message));
+        for (let value of values) {
+
+            if (value > BYTE_MAX) {
+                this.binary.push((value >> 8) & 0xFF);
+                this.binary.push(value & 0xFF);
+            } else {
+                this.binary.push(value);
+            }
+
+        }
+
     }
 
-    reset(new_source) {
+    #error(message) {
+        // console.log(this.lexer.formatError(this.current_token, message));
+    }
+
+    reset(new_source, base_address) {
         this.halt();
 
         if (new_source) {
-            this.source = new_source.toLowerCase()
+            this.source = new_source.toLowerCase().concat('\n')
         }
 
         this.lexer.reset(this.source);
+        this.label_table = {};
+        this.const_table = {}
+        this.pc = base_address || 0x4000;
+        this.dp = 0;
+        this.binary = [];
+        this.current_token = {};
+
+        this.second_parse = false;
     }
 
     halt() {
@@ -113,13 +126,6 @@ export class Assembler {
     }
 
     #handle_opcode() {
-
-        // console.log('start');
-        // while (this.#next().type !== 'NL') {
-        //     console.log(this.current_token);
-        // }
-        // console.log('endl');
-        // return;
 
         if (inherent_only.has(this.current_token.value)) {
             this.pc += BYTE; // I think these instructions are always 1 byte...
@@ -298,12 +304,13 @@ export class Assembler {
 
                     if (this.second_parse) {
 
-                        this.binary.push(op.immediate.code)
+                        this.#insert_binary(op.immediate.code)
 
                         if (op.immediate.size == 2) {
                             this.binary.push(value & 0xFF)
 
                         } else {
+
                             this.binary.push((value >> 8) & 0xFF); // High byte
                             this.binary.push(value & 0xFF);        // Low byte
                         }
@@ -426,7 +433,7 @@ export class Assembler {
                 this.pc += this.op.direct.size;
 
                 if (this.second_parse) {
-                    this.binary.push(op.direct.code);
+                    this.#insert_binary(op.direct.code);
                     this.binary.push(n & 0xFF); // low byte
                 }
                 // calc direct
@@ -442,7 +449,7 @@ export class Assembler {
 
 
                 if (this.second_parse) {
-                    this.binary.push(op.extended.code);
+                    this.#insert_binary(op.extended.code);
                     this.binary.push((n >> 8) & 0xFF); // High byte
                     this.binary.push(n & 0xFF); // low byte
                 }
@@ -543,7 +550,7 @@ export class Assembler {
             this.pc += op.direct.size;
 
             if (this.second_parse) {
-                this.binary.push(op.direct.code);
+                this.#insert_binary(op.direct.code);
                 this.binary.push(n & 0xFF);
             }
 
@@ -555,7 +562,7 @@ export class Assembler {
             this.pc += op.extended.size;
 
             if (this.second_parse) {
-                this.binary.push(op.extended.code);
+                this.#insert_binary(op.extended.code);
                 this.binary.push((n >> 8) & 0xFF); // High byte
                 this.binary.push(n & 0xFF); // low byte
             }
@@ -600,7 +607,7 @@ export class Assembler {
 
             if (this.second_parse) {
 
-                this.binary.push(op.indexed.code, postbyte)
+                this.#insert_binary(op.indexed.code, postbyte)
 
                 if (n > 127) {
                     this.binary.push((n >> 8) & 0xFF); // High byte
@@ -627,7 +634,7 @@ export class Assembler {
                 }
 
                 if (this.second_parse) {
-                    this.binary.push(op.indexed.code, postbyte)
+                    this.#insert_binary(op.indexed.code, postbyte)
                     this.binary.push(n & 0xFF); // low byte
                 }
 
@@ -646,7 +653,7 @@ export class Assembler {
                 // }
 
                 if (this.second_parse) {
-                    this.binary.push(op.indexed.code, postbyte)
+                    this.#insert_binary(op.indexed.code, postbyte)
                     this.binary.push((n >> 8) & 0xFF); // High byte
                     this.binary.push(n & 0xFF); // low byte
                 }
@@ -844,50 +851,12 @@ export class Assembler {
 
     assemble() {
         this.#parse();
-        console.log(this.label_table);
         this.second_parse = true;
         this.lexer.reset(this.source);
         this.pc = 0x4000 - 1;
         this.#parse();
-
-        console.log(this.label_table);
-        console.log(this.const_table)
-        this.print_hex()
-
-        // 
-        // this.#parse();
-        // return this.binary;
+        return this.binary;
     }
 }
 
 
-
-let input = `
-start:
-    leay helloworld,pcr
-    jsr print
-    rts
-
-const textscreenbase=$400
-
-print:
-    pshs a,x,y
-    ldx #textscreenbase
-printloop:
-    lda ,y+
-    beq printover
-    cmpa #$40
-    bhs print6847
-    adda #$40
-print6847:
-    sta ,x+
-    bra printloop
-printover:
-    puls a,x,y
-    rts
-
-helloworld:
-    fcb "HELLO WORLD",0
-`
-
-const asm = new Assembler(input).assemble();
