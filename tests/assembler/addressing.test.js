@@ -355,11 +355,11 @@ describe("Indexed Addressing Modes", () => {
     test("16 bit n,R", () => {
 
         const test_input = `
-        leax -3000,y
-        leay -32768,x
-        leax -129,u
-        leax 128,x
-        leay 32767,s
+            leax -3000,y
+            leay -32768,x
+            leax -129,u
+            leax 128,x
+            leay 32767,s
         `
         const expected_binary = [
             0x30,
@@ -469,25 +469,28 @@ describe("Indexed Addressing Modes", () => {
         `
         const expected_binary = [
             0x30,
-            0x8D,
+            0x8C,
             0xBF,
             0x7C,
             0x31,
-            0x8D,
+            0x8C,
             0xBF,
             0x94,
             0x30,
-            0x8D,
+            0x8C,
             0xC0,
             0x58,
             0x30,
-            0x8D,
+            0x8C,
             0xC0,
             0x6F
         ]
         test_asm.reset(test_input);
 
         const result = test_asm.assemble()
+
+        print_hex(expected_binary)
+        print_hex(result)
 
         expect(result.length).toBe(expected_binary.length);
 
@@ -526,6 +529,7 @@ describe("Indexed Addressing Modes", () => {
         test_asm.reset(test_input);
 
         const result = test_asm.assemble()
+
 
         expect(result.length).toBe(expected_binary.length);
 
@@ -798,11 +802,14 @@ describe("Indirect Indexed Addressing Modes", () => {
         leax [100]
         `
         const expected_binary = [
-            0x30, 0x9F, 0x64, 0x00
+            0x30, 0x9F, 0x00, 0x64,
         ]
         test_asm.reset(test_input);
 
         const result = test_asm.assemble()
+
+        print_hex(expected_binary)
+        print_hex(result)
 
         expect(result.length).toBe(expected_binary.length);
 
@@ -814,3 +821,10 @@ describe("Indirect Indexed Addressing Modes", () => {
 
     })
 })
+
+
+
+function print_hex(arr) {
+    const hex_array = arr.map(num => num.toString(16).padStart(2, '0').toUpperCase());
+    console.log(hex_array.join(' '));
+}

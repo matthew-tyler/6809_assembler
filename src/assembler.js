@@ -44,7 +44,7 @@ export class Assembler {
     }
 
     #error(message) {
-        // console.log(this.lexer.formatError(this.current_token, message));
+        console.log(this.lexer.formatError(this.current_token, message));
     }
 
     reset(new_source, base_address) {
@@ -128,200 +128,27 @@ export class Assembler {
     #handle_opcode() {
 
         if (inherent_only.has(this.current_token.value)) {
-            this.pc += BYTE; // I think these instructions are always 1 byte...
-
-            if (this.second_parse) {
-                const code = opcodes.get(this.current_token.value).inherent.code;
-                this.#insert_binary(code);
-            }
-
-            this.#next();
-            if (this.current_token.type !== 'NL') {
-                this.#error("Inherent instructions don't take arguments")
-            }
-
+            this.#handle_inherent();
         } else if (relative_only.has(this.current_token.value)) {
-
-            const instruction = opcodes.get(this.current_token.value);
-
-            this.#next();
-            this.pc += instruction.relative.size;
-
-            if (this.current_token.type !== "IDENTIFIER") {
-                this.#error("Branches require a label");
-            }
-
-            if (this.second_parse) {
-
-                this.#insert_binary(instruction.relative.code);
-
-                const address = this.label_table[this.current_token.value];
-
-                if (address === undefined) {
-                    this.#error("Label not defined");
-                }
-
-                let relative_offset = address - this.pc;
-
-                if (instruction.relative.size === 2) {
-
-                    if (relative_offset < -126 || relative_offset > 129) {
-                        this.#error("Branch offset out of range");
-                    }
-
-                    // Convert to two's complement if the offset is negative
-                    if (relative_offset < 0) {
-                        relative_offset = 256 + relative_offset; // Equivalent to (0x100 + relative_offset)
-                    }
-
-                    this.binary.push(relative_offset & 0xFF); // Add the offset as a single byte.
-
-                } else {
-
-                    // Handle 16-bit relative branches
-                    if (relative_offset < -32768 || relative_offset > 32767) {
-                        this.#error("Long branch offset out of range");
-                    }
-
-                    // Convert to two's complement if the offset is negative
-                    if (relative_offset < 0) {
-                        relative_offset = 65536 + relative_offset; // Convert to 16-bit two's complement
-                    }
-                    this.binary.push((relative_offset >> 8) & 0xFF); // High byte
-                    this.binary.push(relative_offset & 0xFF);        // Low byte
-                }
-
-            }
-
+            this.#handle_relative();
         } else if (register_only.has(this.current_token.value)) {
-            // handle tfr and exg 
-
-            const instruction = opcodes.get(this.current_token.value);
-
-            this.#next();
-
-            const source_register = INTER_REGISTER_POSTBYTE[this.current_token.value]
-            if (source_register === undefined) {
-                this.#error("Should be a regiseter");
-            }
-            this.#next();
-
-            if (this.current_token.type !== 'COMMA') {
-                this.#error("Registers should be comma seperated");
-            }
-
-            this.#next();
-
-            const destination_register = INTER_REGISTER_POSTBYTE[this.current_token.value];
-
-            if (destination_register === undefined) {
-                this.#error("Should be a register")
-            }
-
-            this.pc += 2 // both of these commands take 2 bytes.
-
-            if (this.second_parse) {
-                const postbyte = source_register << 4 | destination_register;
-                this.#insert_binary(instruction.immediate.code, postbyte);
-            }
-
-
+            this.#handle_register_only();
         } else if (psh.has(this.current_token.value)) {
-            // handle psh/pul
-
-            const psh_reg = this.current_token.value.charAt(3); // The magic number is just the final char of pshs/puls/pshu/pulu
-            const opcode = opcodes.get(this.current_token.value).immediate.code;
-            let postbyte = 0;
-
-
-            while (this.#next().type !== 'NL') {
-                if (this.current_token.type === 'COMMA') {
-                    continue;
-                }
-
-                const register = PSH_PUL_POSTBYTE[this.current_token.value];
-
-                if (register === undefined) {
-                    this.#error("Expecting a regiseter");
-                }
-
-                if (this.current_token.value === psh_reg) {
-                    this.#error("Can't push/pul to/from the same register")
-                }
-
-                postbyte |= register;
-            }
-
-
-
-            this.pc += WORD // which I think is just 2 bytes.
-
-            if (this.second_parse) {
-                this.#insert_binary(opcode, postbyte);
-            }
-
+            this.#handle_psh_pul();
         } else {
 
-            const mnomnic = this.current_token.value;
-            const op = opcodes.get(mnomnic);
+            const mnemonic = this.current_token.value;
+            const op = opcodes.get(mnemonic);
             this.#next();
 
             switch (this.current_token.type) {
 
                 case "IMMEDIATE":
-                    if (op.immediate === undefined) {
-                        this.#error(`Immediate addressing mode not allowed with ${mnomnic}`)
-                    }
-
-
-                    this.pc += op.immediate.size;
-
-                    let value = 0;
-                    let sign = 1; // janky as. 
-
-                    while (this.#next().type !== 'NL') {
-                        if (this.current_token.type === "INC") {
-                            continue;
-                        }
-
-                        // a not so elegant way to handle subtracting
-                        if (this.current_token.type == "DEC") {
-                            sign = -1;
-                            continue;
-                        }
-
-                        if (this.current_token.type !== "INTEGER" && this.current_token.type !== "IDENTIFIER") {
-                            this.#error("Expecting a value")
-                        }
-
-                        if (this.current_token.type === "INTEGER") {
-                            value += this.current_token.value;
-                        } else if (this.current_token.type === "IDENTIFIER") {
-                            value += (this.const_table[this.current_token.value] || this.label_table[this.current_token.value]) * sign;
-                            sign = 1;
-                        }
-                    }
-
-                    if (this.second_parse) {
-
-                        this.#insert_binary(op.immediate.code)
-
-                        if (op.immediate.size == 2) {
-                            this.binary.push(value & 0xFF)
-
-                        } else {
-
-                            this.binary.push((value >> 8) & 0xFF); // High byte
-                            this.binary.push(value & 0xFF);        // Low byte
-                        }
-
-                    }
+                    this.#handle_immediate(op, mnemonic);
                     break;
                 case "DIRECT":
                 case "EXT_DIR":
-                    let m = this.current_token.type;
-                    this.#next();
-                    this.#handle_args(op, m);
+                    this.#handle_direct(op, this.current_token.type);
                     break;
                 case "INDIRECT_START":
                     this.#next();
@@ -336,61 +163,239 @@ export class Assembler {
 
     }
 
+    #handle_immediate(op, mnemonic) {
+        if (op.immediate === undefined) {
+            this.#error(`Immediate addressing mode not allowed with ${mnemonic}`);
+        }
+
+        this.pc += op.immediate.size;
+
+        let value = 0;
+        let sign = 1; // janky as. 
+
+        while (this.#next().type !== 'NL') {
+            if (this.current_token.type === "INC") {
+                continue;
+            }
+
+            // a not so elegant way to handle subtracting
+            if (this.current_token.type == "DEC") {
+                sign = -1;
+                continue;
+            }
+
+            if (this.current_token.type !== "INTEGER" && this.current_token.type !== "IDENTIFIER") {
+                this.#error("Expecting a value");
+            }
+
+            if (this.current_token.type === "INTEGER") {
+                value += this.current_token.value;
+            } else if (this.current_token.type === "IDENTIFIER") {
+                value += (this.const_table[this.current_token.value] || this.label_table[this.current_token.value]) * sign;
+                sign = 1;
+            }
+        }
+
+        if (this.second_parse) {
+
+            this.#insert_binary(op.immediate.code);
+
+            if (op.immediate.size == 2) {
+                this.binary.push(value & 0xFF);
+
+            } else {
+
+                this.binary.push((value >> 8) & 0xFF); // High byte
+                this.binary.push(value & 0xFF);
+            }
+
+        }
+    }
+
+    #handle_direct(op, mode) {
+        // direct in the form op < or > then n.
+
+        const n = this.#value_token(this.#next());
+        if (mode === "EXT_DIR") {
+
+            const opcode = op.extended.code;
+
+            if (opcode === undefined) {
+                this.#error("No extended direct mode for this operation")
+            }
+
+            this.pc += op.extended.size;
+
+            if (this.second_parse) {
+                this.#insert_binary(opcode)
+
+                if (n.length === 2) {
+                    this.binary.push(...n);
+                } else {
+                    this.binary.push(0x00, ...n)
+                }
+            }
+        } else {
+
+            const opcode = op.direct.code;
+
+            if (opcode === undefined) {
+                this.#error("No direct mode for this operation")
+            }
+
+            this.pc += op.direct.size;
+
+            if (this.second_parse) {
+                this.#insert_binary(opcode)
+
+                if (n.length === 1) {
+                    this.binary.push(...n);
+                } else {
+                    this.binary.push(n.pop())
+                }
+            }
+        }
+    }
+
+    #handle_inherent() {
+        this.pc += BYTE; // I think these instructions are always 1 byte...
+
+        if (this.second_parse) {
+            const code = opcodes.get(this.current_token.value).inherent.code;
+            this.#insert_binary(code);
+        }
+
+        this.#next();
+        if (this.current_token.type !== 'NL') {
+            this.#error("Inherent instructions don't take arguments")
+        }
+    }
+
+    #handle_relative() {
+        const instruction = opcodes.get(this.current_token.value);
+
+        this.#next();
+        this.pc += instruction.relative.size;
+
+        if (this.current_token.type !== "IDENTIFIER") {
+            this.#error("Branches require a label");
+        }
+
+        if (this.second_parse) {
+
+            this.#insert_binary(instruction.relative.code);
+
+            const address = this.label_table[this.current_token.value];
+
+            if (address === undefined) {
+                this.#error("Label not defined");
+            }
+
+            let relative_offset = address - this.pc;
+
+            if (instruction.relative.size === 2) {
+
+                if (relative_offset < -126 || relative_offset > 129) {
+                    this.#error("Branch offset out of range");
+                }
+
+                // Convert to two's complement if the offset is negative
+                if (relative_offset < 0) {
+                    relative_offset = 256 + relative_offset; // Equivalent to (0x100 + relative_offset)
+                }
+
+                this.binary.push(relative_offset & 0xFF); // Add the offset as a single byte.
+
+            } else {
+
+                // Handle 16-bit relative branches
+                if (relative_offset < -32768 || relative_offset > 32767) {
+                    this.#error("Long branch offset out of range");
+                }
+
+                // Convert to two's complement if the offset is negative
+                if (relative_offset < 0) {
+                    relative_offset = 65536 + relative_offset; // Convert to 16-bit two's complement
+                }
+                this.binary.push((relative_offset >> 8) & 0xFF); // High byte
+                this.binary.push(relative_offset & 0xFF);        // Low byte
+            }
+
+        }
+    }
+
+    #handle_register_only() {
+        // handle tfr and exg 
+
+        const instruction = opcodes.get(this.current_token.value);
+
+        this.#next();
+
+        const source_register = INTER_REGISTER_POSTBYTE[this.current_token.value]
+        if (source_register === undefined) {
+            this.#error("Should be a regiseter");
+        }
+        this.#next();
+
+        if (this.current_token.type !== 'COMMA') {
+            this.#error("Registers should be comma seperated");
+        }
+
+        this.#next();
+
+        const destination_register = INTER_REGISTER_POSTBYTE[this.current_token.value];
+
+        if (destination_register === undefined) {
+            this.#error("Should be a register")
+        }
+
+        this.pc += 2 // both of these commands take 2 bytes.
+
+        if (this.second_parse) {
+            const postbyte = source_register << 4 | destination_register;
+            this.#insert_binary(instruction.immediate.code, postbyte);
+        }
+    }
+
+    #handle_psh_pul() {
+        const psh_reg = this.current_token.value.charAt(3); // The magic number is just the final char of pshs/puls/pshu/pulu
+        const opcode = opcodes.get(this.current_token.value).immediate.code;
+        let postbyte = 0;
+
+
+        while (this.#next().type !== 'NL') {
+            if (this.current_token.type === 'COMMA') {
+                continue;
+            }
+
+            const register = PSH_PUL_POSTBYTE[this.current_token.value];
+
+            if (register === undefined) {
+                this.#error("Expecting a register");
+            }
+
+            if (this.current_token.value === psh_reg) {
+                this.#error("Can't push/pul to/from the same register")
+            }
+
+            postbyte |= register;
+        }
+
+        this.pc += WORD // which I think is just 2 bytes.
+
+        if (this.second_parse) {
+            this.#insert_binary(opcode, postbyte);
+        }
+
+    }
+
     #handle_args(op, mode) {
 
         let n = 0;
         let register;
         let postbyte;
 
-        /**
-         *  All operations from here on should come in the form OPCODE [POSTBYTE] [N]
-         *  Where I'm using n above to be N and the brackets to denote optional.
-         *  
-         *  The postbyte is determined in a couple of spots. 
-         *  
-         *  For forms ,R the postbtyte is determined in the swtich statement if we are register and the value
-         *  or postbyte hasn't already been set. The postbyte should then be x84
-         *  
-         *  For n,R there's some variations on the postbyte. If -16 to 15 then in form 0RRnnnnn
-         *  if -128 to 127 then in form 1RR01000 (x88 | RR)
-         *  if -32768 to 32767 then 1RR01001 (x89 | RR)
-         *  
-         * 
-         *  Accumulator offset postbyte follows the patterns
-         *  A,R = 1RR00110
-         *  B,R = 1RR00101
-         *  D,R = 1RR01011
-         *  
-         *  Inc/Dec
-         *  
-         *  ,R+ = 1RR00000
-         *  ,R++ = 1RR00001
-         *  ,-R = 1RR00010
-         *  ,--R = 1RR00011
-         * 
-         *  In Indirect mode only [,R++] and [,--R] are allowed.
-         * 
-         *  PCR offset comes in the form n,PCR in both 8 and 16 bit. 
-         * 
-         *  n,PCR -128 to 127 = 100011001
-         *  n,PCR -37768 to 32767 = 100011001
-         * 
-         *  For indirect forms the above just change the last bit after RR so 1RR01000 becomes 1RR11000
-         *  
-         *  
-         */
-
-
-        // A,R 
-        // n,R
-        // ,R
-        // n,pcr
-        // [n]
-        // with pre, post inc and dec
-        // extended such as jsr print
-
         if (this.current_token.type !== 'COMMA') {
-
 
             switch (this.current_token.type) {
                 case "CHAR": // I believe chars act just like numbers here. Needs a value transform
@@ -403,17 +408,19 @@ export class Assembler {
                     } else {
                         this.#error('Expecting value or an accumulator')
                     }
+
                     break;
                 case "IDENTIFIER":
                     let value = this.label_table[this.current_token.value] || this.const_table[this.current_token.value];
-                    // console.log(this.current_token, value);
+
                     if (value === undefined) {
 
                         if (this.second_parse) {
                             this.#error('Unresolved label');
                         }
-                        value = 0;
+                        value = WORD_MIN;
                     }
+
                     n = value;
                     break;
                 default:
@@ -424,9 +431,14 @@ export class Assembler {
         }
         this.#next();
 
+
+
+
         if (this.current_token.type === 'NL') {
 
-            if (mode === 'DIRECT') {
+            n = this.#encode_value_as_bytes(n)
+
+            if (n.length == 1) {
 
                 if (op.direct === undefined) {
                     this.#error('Direct addressing not allowed')
@@ -436,12 +448,9 @@ export class Assembler {
 
                 if (this.second_parse) {
                     this.#insert_binary(op.direct.code);
-                    this.binary.push(n & 0xFF); // low byte
+                    this.binary.push(...n); // low byte
                 }
-                // calc direct
             } else {
-
-                // treat as extended.
 
                 if (op.extended === undefined) {
                     this.#error("Extended addressing not allowed");
@@ -452,23 +461,30 @@ export class Assembler {
 
                 if (this.second_parse) {
                     this.#insert_binary(op.extended.code);
-                    this.binary.push((n >> 8) & 0xFF); // High byte
-                    this.binary.push(n & 0xFF); // low byte
+                    this.binary.push(...n); // low byte
                 }
 
             }
-
             return;
 
         }
 
+
         if (this.current_token.type === 'INDIRECT_END') {
             // handle [n]
             this.pc += (op.indexed.size + 2) // + 2 for the postbyte and arg
+
             if (this.second_parse) {
+
+                this.#insert_binary(op.indexed.code)
                 this.binary.push(0x9F)
-                this.binary.push((n >> 8) & 0xFF); // High byte
-                this.binary.push(n & 0xFF);        // Low byte
+
+                n = this.#encode_value_as_bytes(n, WORD);
+                if (n.length === 2) {
+                    this.binary.push(...n);
+                } else {
+                    this.binary.push(...n);
+                }
             }
             return;
 
@@ -491,7 +507,6 @@ export class Assembler {
 
         if (this.current_token.type === 'REGISTER') {
 
-
             if (accumulators.has(this.current_token.value)) {
                 this.#error("Expecting a register, either X, Y, U or S")
             }
@@ -503,12 +518,8 @@ export class Assembler {
 
                 if (n >= -128 && n <= 127) {
                     postbyte = 0x8C;
-                    this.pc += 1;
-                } else if (n >= -32768 && n <= 32767) {
-                    postbyte = 0x8D;
-                    this.pc += 2;
                 } else {
-                    this.#error("Number too large or small")
+                    postbyte = 0x8D;
                 }
 
             } else {
@@ -516,7 +527,7 @@ export class Assembler {
             }
 
         } else {
-            this.#error(`Unexepceted argument ${this.current_token.text}`)
+            this.#error(`Unexpected argument ${this.current_token.text}`)
 
         }
 
@@ -533,51 +544,26 @@ export class Assembler {
             this.#next();
         }
 
-        if (this.current_token.type === 'INDIRECT_END' && mode !== 'INDIRECT') {
-            this.#error("Possibly missing [ at start of arguments");
+        if (this.current_token.type === 'INDIRECT_END') {
+
+            if (mode !== 'INDIRECT') {
+                this.#error("Possibly missing [ at start of arguments");
+            }
+            this.#next();
         }
 
         if (this.current_token.type !== 'NL') {
+            // console.log(this.current_token);
             this.#error('Unexpected token');
         }
 
 
-
-        /// no cur token under here?
-
-        if (mode === "DIRECT") {
-
-            if (op.direct === undefined) {
-                this.#error(`${op.value} has no direct mode`)
-            }
-
-            this.pc += op.direct.size;
-
-            if (this.second_parse) {
-                this.#insert_binary(op.direct.code);
-                this.binary.push(n & 0xFF);
-            }
-
-        } else if (mode === "EXT_DIR") {
-            if (op.extended === undefined) {
-                this.#error(`${op.value} has no extended mode`)
-            }
-
-            this.pc += op.extended.size;
-
-            if (this.second_parse) {
-                this.#insert_binary(op.extended.code);
-                this.binary.push((n >> 8) & 0xFF); // High byte
-                this.binary.push(n & 0xFF); // low byte
-            }
-        }
-        // must be indexed, so size is opcode + the size to rep the number
-        else if (register !== undefined) {
+        if (register !== undefined) {
             this.pc += op.indexed.size;
-
 
             // This is in the case n,R or ,R 
             if (postbyte === undefined) {
+
 
 
                 if (n === 0) {
@@ -597,12 +583,14 @@ export class Assembler {
                 } else if (n >= -128 && n <= 127) {
 
                     this.pc += 1 // Adds 1 byte for handling the postbyte
+
                     postbyte = 0x88 | register;
 
                 } else if (n >= -32768 && n <= 32767) {
 
-                    this.pc += 2 // adds 2 bytes for size + instruction.
+                    this.pc += 2 // adds 2 bytes for size + instruction. These do nothing.....
                     postbyte = 0x89 | register;
+
                 } else {
                     console.log(this.current_token, "Number not right");
                 }
@@ -625,31 +613,8 @@ export class Assembler {
                 if (n === 0) {
                     return;
                 }
-
-                if (n > 127) {
-
-                    // if (n < -0x8000) {
-                    //     n += 0x10000;
-                    // }
-
-                    if (n & 0x8000) { // Checks if the 16th bit is set (for 16-bit numbers)
-                        n = (~n) & 0xFFFF; // Invert all bits and limit to 16 bits
-                        n = (n + 1) & 0xFFFF; // Add 1 and limit to 16 bits
-                    }
-
-
-                    this.binary.push((n >> 8) & 0xFF); // High byte
-                    this.binary.push(n & 0xFF);        // Low byte
-                } else {
-
-                    if (n & 0x80) { // Checks if the 8th bit is set (for 8-bit numbers)
-                        n = (~n) & 0xFF; // Invert all bits and limit to 8 bits
-                        n = (n + 1) & 0xFF; // Add 1 and limit to 8 bits
-                    }
-                    console.log(n);
-                    this.binary.push(n & 0xFF);
-                }
-
+                n = this.#encode_value_as_bytes(n);
+                this.binary.push(...n);
             }
 
         } else {
@@ -658,35 +623,23 @@ export class Assembler {
 
             // console.log(this.current_token);
             if (postbyte === 0x8C) {
-
-                if (n & 0x80) { // Checks if the 8th bit is set (for 8-bit numbers)
-                    n = (~n) & 0xFF; // Invert all bits and limit to 8 bits
-                    n = (n + 1) & 0xFF; // Add 1 and limit to 8 bits
-                }
+                this.pc += 1;
+                n = n - this.pc;
+                n = this.#encode_value_as_bytes(n, BYTE);
 
                 if (this.second_parse) {
                     this.#insert_binary(op.indexed.code, postbyte)
-                    this.binary.push(n & 0xFF); // low byte
+                    this.binary.push(...n);
                 }
 
             } else if (postbyte === 0x8D) {
-
-                // console.log(this.pc);
+                this.pc += 2;
                 n = n - this.pc;
-                // console.log(n);
-                // if (n < -0x8000) {
-                //     n += 0x10000;
-                // }
-
-                if (n & 0x8000) { // Checks if the 16th bit is set (for 16-bit numbers)
-                    n = (~n) & 0xFFFF; // Invert all bits and limit to 16 bits
-                    n = (n + 1) & 0xFFFF; // Add 1 and limit to 16 bits
-                }
+                n = this.#encode_value_as_bytes(n, WORD);
 
                 if (this.second_parse) {
                     this.#insert_binary(op.indexed.code, postbyte)
-                    this.binary.push((n >> 8) & 0xFF); // High byte
-                    this.binary.push(n & 0xFF); // low byte
+                    this.binary.push(...n);
                 }
 
             }
@@ -695,6 +648,7 @@ export class Assembler {
         }
 
     }
+
 
     #handle_equ(id) {
         while (this.#next()) {
@@ -848,7 +802,72 @@ export class Assembler {
         }
     }
 
+    #value_token(token) {
 
+        switch (token.type) {
+            case "CHAR":
+            case "INTEGER":
+                return this.#encode_value_as_bytes(token.value);
+            case "IDENTIFIER":
+                let value = this.label_table[token.value] || this.const_table[token.value];
+                if (value === undefined && this.second_parse) {
+                    this.#error('Unresolved label');
+                }
+                return this.#encode_value_as_bytes(value);
+            default:
+                this.#error('Expecting a value')
+                break;
+        }
+    }
+
+    #size_of_value(value) {
+
+        if (value >= -128 && value <= 127) {
+            return BYTE;
+        } else if (value >= -32768 && value <= 32767) {
+            return WORD;
+        }
+
+        this.#error(`${value} is too small or large `)
+        // console.log(this.#next());
+    }
+
+    #encode_value_as_bytes(value, size) {
+
+        const output_bytes = []
+
+        if (!size) {
+
+            size = this.#size_of_value(value)
+        }
+
+        if (size === BYTE) {
+
+            if (value < 0) {
+                value += 0x100;
+            }
+
+            if (value < BYTE_MIN || value > BYTE_MAX) {
+                this.#error("8 Bit value expected")
+            }
+
+            output_bytes.push(value & 0xFF); // Low byte
+        } else if (size === WORD) {
+            if (value < 0) {
+                value += 0x10000;
+            }
+
+
+            if (value < BYTE_MIN || value > WORD_MAX) {
+                this.#error("8 Bit value expected")
+            }
+
+            output_bytes.push(value >> 8); // High byte
+            output_bytes.push(value & 0xFF); // Low byte
+        }
+
+        return output_bytes;
+    }
 
     #parse() {
 
@@ -859,7 +878,9 @@ export class Assembler {
             switch (this.current_token.type) {
                 case 'LABEL':
                     // console.log('top_label', this.current_token, this.pc)
-                    this.label_table[this.current_token.value] = this.pc;
+                    if (!this.second_parse) {
+                        this.label_table[this.current_token.value] = this.pc;
+                    }
                     break;
                 case 'DIRECTIVE':
                     this.#handle_directive();
@@ -869,14 +890,16 @@ export class Assembler {
                     break;
                 case 'IDENTIFIER':
                     // will handle const, equ and =
-                    this.#handle_equ(this.current_token.value);
+                    if (!this.second_parse) {
+                        this.#handle_equ(this.current_token.value);
+                    }
                     break;
             }
         }
     }
 
-    print_hex() {
-        const hex_array = this.binary.map(num => num.toString(16).padStart(2, '0').toUpperCase());
+    print_hex(arr) {
+        const hex_array = arr.map(num => num.toString(16).padStart(2, '0').toUpperCase());
         console.log(hex_array.join(' '));
     }
 
@@ -884,6 +907,7 @@ export class Assembler {
     assemble() {
         this.#parse();
         this.second_parse = true;
+        this.f_label_table = this.label_table;
         this.lexer.reset(this.source);
         this.pc = 0x4000;
         this.#parse();
