@@ -621,8 +621,15 @@ export class Assembler {
 
             this.pc += op.indexed.size;
 
+
             // console.log(this.current_token);
             if (postbyte === 0x8C) {
+
+                if (mode === 'INDIRECT') {
+                    // set 00010000 for the indirect version of the postbyte
+                    postbyte = postbyte | 0x10
+                }
+
                 this.pc += 1;
                 n = n - this.pc;
                 n = this.#encode_value_as_bytes(n, BYTE);
@@ -633,6 +640,11 @@ export class Assembler {
                 }
 
             } else if (postbyte === 0x8D) {
+
+                if (mode === 'INDIRECT') {
+                    // set 00010000 for the indirect version of the postbyte
+                    postbyte = postbyte | 0x10
+                }
                 this.pc += 2;
                 n = n - this.pc;
                 n = this.#encode_value_as_bytes(n, WORD);
@@ -836,6 +848,8 @@ export class Assembler {
 
         const output_bytes = []
 
+
+
         if (!size) {
 
             size = this.#size_of_value(value)
@@ -847,19 +861,11 @@ export class Assembler {
                 value += 0x100;
             }
 
-            if (value < BYTE_MIN || value > BYTE_MAX) {
-                this.#error("8 Bit value expected")
-            }
 
             output_bytes.push(value & 0xFF); // Low byte
         } else if (size === WORD) {
             if (value < 0) {
                 value += 0x10000;
-            }
-
-
-            if (value < BYTE_MIN || value > WORD_MAX) {
-                this.#error("8 Bit value expected")
             }
 
             output_bytes.push(value >> 8); // High byte

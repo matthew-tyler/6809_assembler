@@ -25,13 +25,13 @@ describe('Compiler Directives', () => {
         const const_table = test_asm.const_table;
 
         const expected = {
-            asciiZero: 48,
-            asciiNine: 57,
-            asciiEight: 56,
-            asciiSeven: 55,
-            asciiOne: 49,
-            minusNineteen: -19,
-            PIA: 65312
+            asciizero: 48,
+            asciinine: 57,
+            asciieight: 56,
+            asciiseven: 55,
+            asciione: 49,
+            minusnineteen: -19,
+            pia: 65312
         }
 
         for (const [key, expectedValue] of Object.entries(expected)) {

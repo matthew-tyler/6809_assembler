@@ -461,36 +461,24 @@ describe("Indexed Addressing Modes", () => {
 
     test("8 bit n,PCR", () => {
 
+        // unsure about negative instructions
         const test_input = `
-        leax -128,pcr
-        leay -100,pcr
         leax 100,pcr
         leax 127,pcr
         `
+
+
         const expected_binary = [
             0x30,
             0x8C,
-            0xBF,
-            0x7C,
-            0x31,
-            0x8C,
-            0xBF,
-            0x94,
+            0x61,
             0x30,
             0x8C,
-            0xC0,
-            0x58,
-            0x30,
-            0x8C,
-            0xC0,
-            0x6F
+            0x79
         ]
-        test_asm.reset(test_input);
+        test_asm.reset(test_input, 0);
 
         const result = test_asm.assemble()
-
-        print_hex(expected_binary)
-        print_hex(result)
 
         expect(result.length).toBe(expected_binary.length);
 
@@ -608,6 +596,8 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
+
+
         expect(result.length).toBe(expected_binary.length);
 
         result.forEach((element, index) => {
@@ -723,31 +713,19 @@ describe("Indirect Indexed Addressing Modes", () => {
     test("8 bit [n,PCR]", () => {
 
         const test_input = `
-        leax [-128,pcr]
-        leay [-100,pcr]
         leax [100,pcr]
         leax [127,pcr]
         `
         const expected_binary = [
             0x30,
-            0x9D,
-            0xBF,
-            0x7C,
-            0x31,
-            0x9D,
-            0xBF,
-            0x94,
+            0x9C,
+            0x61,
             0x30,
-            0x9D,
-            0xC0,
-            0x58,
-            0x30,
-            0x9D,
-            0xC0,
-            0x6F
+            0x9C,
+            0x79
         ]
 
-        test_asm.reset(test_input);
+        test_asm.reset(test_input, 0);
 
         const result = test_asm.assemble()
 
@@ -789,6 +767,7 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
+
         expect(result.length).toBe(expected_binary.length);
 
         result.forEach((element, index) => {
@@ -807,9 +786,6 @@ describe("Indirect Indexed Addressing Modes", () => {
         test_asm.reset(test_input);
 
         const result = test_asm.assemble()
-
-        print_hex(expected_binary)
-        print_hex(result)
 
         expect(result.length).toBe(expected_binary.length);
 

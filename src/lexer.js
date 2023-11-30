@@ -4,14 +4,14 @@ const opcodes = ['neg', 'com', 'lsr', 'ror', 'asr', 'asl', 'lsl', 'rol', 'dec', 
 const registers = ["cc", "a", "b", "dp", "x", "y", "u", "s", "pc", "d", "pcr"];
 const directives = [
     ".byte", "equ", "const", "org", "end", "rmb", "ds", "var", "setdp", "direct", "fill",
-    "db", "fcb", "fcc", "dw", "fdb", ".word", ".WORD", "FDB"
+    "db", "fcb", "fcc", "dw", "fdb", ".word"
 ];
 
 
 const all_keywords = {
-    "OPCODE": opcodes,
-    "REGISTER": registers,
-    "DIRECTIVE": directives,
+    "OPCODE": opcodes.concat(opcodes.map(value => value.toUpperCase())), // include uppercase variant
+    "REGISTER": registers.concat(registers.map(value => value.toUpperCase())),
+    "DIRECTIVE": directives.concat(directives.map(value => value.toUpperCase())),
 };
 
 
@@ -20,7 +20,7 @@ export const lexer = moo.compile({
     COMMENT: /[;\*].*/,
     LABEL: {
         match: /[a-zA-Z_][a-zA-Z0-9_]*:/,
-        value: s => s.slice(0, -1) // remove the trailing ":"
+        value: s => s.slice(0, -1).toLowerCase() // remove the trailing ":"
     },
     INTEGER: {
         match: [
@@ -57,7 +57,7 @@ export const lexer = moo.compile({
         { match: /'.'/, value: s => s.slice(1, -1) },  // surrounded by single quotes
         { match: /'.?/, value: s => s.slice(1) }       // single starting quote
     ],
-    IDENTIFIER: { match: /[a-zA-Z0-9.]+/, type: moo.keywords(all_keywords) },
+    IDENTIFIER: { match: /[a-zA-Z0-9.]+/, type: moo.keywords(all_keywords), value: (x) => x.toLowerCase() },
     INC2: /\+\+/,
     DEC2: /\-\-/,
     INC: /\+/,
