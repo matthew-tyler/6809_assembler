@@ -5,11 +5,7 @@ const asm = new Assembler('');
 
 const input = `
 start:
-    ldd #$0320
-    ldx #$1000
-    ldy #$3000
-    pshs d,x,y
-    pshu d,x,y
+    leax y,d,u
 `
 
 asm.reset(input);

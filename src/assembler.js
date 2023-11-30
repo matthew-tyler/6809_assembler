@@ -52,6 +52,12 @@ export class Assembler {
         console.log(this.lexer.formatError(this.current_token, message));
     }
 
+    #expect(token_type, error_message) {
+        if (this.current_token.type !== token_type) {
+            this.#error(error_message)
+        }
+    }
+
     reset(new_source, base_address) {
         this.halt();
 
@@ -63,10 +69,10 @@ export class Assembler {
         this.label_table = {};
         this.const_table = {}
         this.pc = base_address || 0x4000;
+        this.base_address = base_address || 0x4000;
         this.dp = 0;
         this.binary = [];
         this.current_token = {};
-
         this.second_parse = false;
     }
 
@@ -79,9 +85,8 @@ export class Assembler {
             case 'org':
                 // sets the origin. I guess that just updates the PC?
                 this.#next();
-                if (this.current_token.type == 'INTEGER') {
-                    this.pc = Math.abs(this.current_token.value);
-                }
+                this.#expect('INTEGER', "ORG directives should be followed by a valid number")
+                this.pc = Math.abs(this.current_token.value);
                 break;
             case 'end':
                 // just end the assembler here. 
@@ -90,19 +95,16 @@ export class Assembler {
             case 'setdp':
             case 'direct':
                 this.#next();
-                if (this.current_token.type == 'INTEGER') {
-                    this.dp = Math.abs(this.current_token.value);
-                }
+                this.#expect('INTEGER', "DP directives should be followed by a valid number")
+                this.dp = Math.abs(this.current_token.value);
                 break;
             case 'rmb':
             case 'ds':
                 this.#next();
-                if (this.current_token.type == 'INTEGER') {
-                    const num_bytes = Math.abs(this.current_token.value);
-                    this.pc += num_bytes;
-                    this.#insert_binary(...new Array(num_bytes).fill(0));
-                }
-
+                this.#expect('INTEGER', "RMB/DS directives should be followed by a valid number")
+                const num_bytes = Math.abs(this.current_token.value);
+                this.pc += num_bytes;
+                this.#insert_binary(...new Array(num_bytes).fill(0));
                 break;
             case 'var':
                 this.#handle_var();
@@ -155,10 +157,10 @@ export class Assembler {
                     break;
                 case "INDIRECT_START":
                     this.#next();
-                    this.#handle_args(op, "INDIRECT");
+                    this.#handle_indexed(op, "INDIRECT");
                     break;
                 default:
-                    this.#handle_args(op); // Mode currently undefined
+                    this.#handle_indexed(op); // Mode currently undefined
                     break;
             }
 
@@ -177,25 +179,26 @@ export class Assembler {
         let sign = 1; // janky as. 
 
         while (this.#next().type !== 'NL') {
-            if (this.current_token.type === "INC") {
-                continue;
-            }
-
-            // a not so elegant way to handle subtracting
-            if (this.current_token.type == "DEC") {
-                sign = -1;
-                continue;
-            }
-
-            if (this.current_token.type !== "INTEGER" && this.current_token.type !== "IDENTIFIER") {
-                this.#error("Expecting a value");
-            }
-
-            if (this.current_token.type === "INTEGER") {
-                value += this.current_token.value;
-            } else if (this.current_token.type === "IDENTIFIER") {
-                value += (this.const_table[this.current_token.value] || this.label_table[this.current_token.value]) * sign;
-                sign = 1;
+            switch (this.current_token.type) {
+                case "INC":
+                    // Skip token
+                    break;
+                case "DEC":
+                    // Toggle sign for subtraction
+                    sign = -1;
+                    break;
+                case "INTEGER":
+                    // Add integer value to the total
+                    value += this.current_token.value * sign;
+                    sign = 1; // Reset sign after using
+                    break;
+                case "IDENTIFIER":
+                    // Add value from tables, considering sign
+                    value += (this.const_table[this.current_token.value] || this.label_table[this.current_token.value] || 0) * sign;
+                    sign = 1; // Reset sign after using
+                    break;
+                default:
+                    this.#error("Expecting a value");
             }
         }
 
@@ -219,8 +222,8 @@ export class Assembler {
 
     #handle_direct(op, mode) {
         // direct in the form op < or > then n.
-
         const n = this.#value_token(this.#next());
+
         if (mode === "EXT_DIR") {
 
             const opcode = op.extended.code;
@@ -267,10 +270,8 @@ export class Assembler {
 
         const code = opcodes.get(this.current_token.value).inherent.code;
         this.#insert_binary(code);
-
-        if (this.#next().type !== 'NL') {
-            this.#error("Inherent instructions don't take arguments")
-        }
+        this.#next();
+        this.#expect('NL', "Instruction not expecting arguments")
     }
 
     #handle_relative() {
@@ -279,9 +280,7 @@ export class Assembler {
         this.#next();
         this.pc += instruction.relative.size;
 
-        if (this.current_token.type !== "IDENTIFIER") {
-            this.#error("Branches require a label");
-        }
+        this.#expect('IDENTIFIER', "Branches require a label")
 
         if (this.second_parse) {
 
@@ -298,15 +297,9 @@ export class Assembler {
             if (instruction.relative.size === 2) {
 
                 if (relative_offset < -126 || relative_offset > 129) {
-                    this.#error("Branch offset out of range");
+                    this.#error("Branch offset out of range, consider using a long branch");
                 }
-
-                // Convert to two's complement if the offset is negative
-                if (relative_offset < 0) {
-                    relative_offset = 256 + relative_offset; // Equivalent to (0x100 + relative_offset)
-                }
-
-                this.binary.push(relative_offset & 0xFF); // Add the offset as a single byte.
+                this.#insert_binary(...this.#encode_value_as_bytes(relative_offset, BYTE))
 
             } else {
 
@@ -315,12 +308,7 @@ export class Assembler {
                     this.#error("Long branch offset out of range");
                 }
 
-                // Convert to two's complement if the offset is negative
-                if (relative_offset < 0) {
-                    relative_offset = 65536 + relative_offset; // Convert to 16-bit two's complement
-                }
-                this.binary.push((relative_offset >> 8) & 0xFF); // High byte
-                this.binary.push(relative_offset & 0xFF);        // Low byte
+                this.#insert_binary(...this.#encode_value_as_bytes(relative_offset, WORD))
             }
 
         }
@@ -332,16 +320,13 @@ export class Assembler {
         const instruction = opcodes.get(this.current_token.value);
 
         this.#next();
-
         const source_register = INTER_REGISTER_POSTBYTE[this.current_token.value]
         if (source_register === undefined) {
             this.#error("Should be a regiseter");
         }
-        this.#next();
 
-        if (this.current_token.type !== 'COMMA') {
-            this.#error("Registers should be comma seperated");
-        }
+        this.#next();
+        this.#expect('COMMA', "Registers should be comma seperated")
 
         this.#next();
 
@@ -353,10 +338,9 @@ export class Assembler {
 
         this.pc += 2 // both of these commands take 2 bytes.
 
-        if (this.second_parse) {
-            const postbyte = source_register << 4 | destination_register;
-            this.#insert_binary(instruction.immediate.code, postbyte);
-        }
+        const postbyte = source_register << 4 | destination_register;
+        this.#insert_binary(instruction.immediate.code, postbyte);
+
     }
 
     #handle_psh_pul() {
@@ -384,57 +368,51 @@ export class Assembler {
         }
 
         this.pc += WORD // which I think is just 2 bytes.
-
-        if (this.second_parse) {
-            this.#insert_binary(opcode, postbyte);
-        }
-
+        this.#insert_binary(opcode, postbyte);
     }
 
-    #handle_args(op, mode) {
+    #handle_indexed(op, mode) {
 
         let n = 0;
         let register;
         let postbyte;
 
-        if (this.current_token.type !== 'COMMA') {
+        switch (this.current_token.type) {
+            case "CHAR": // I believe chars act just like numbers here. Needs a value transform
+            case "INTEGER":
+                n = this.current_token.value;
+                break;
+            case "REGISTER":
+                if (accumulators.has(this.current_token.value)) {
+                    postbyte = ACCUMULATOR_POSTBYTE[this.current_token.value];
+                } else {
+                    this.#error('Expecting value or an accumulator')
+                }
 
-            switch (this.current_token.type) {
-                case "CHAR": // I believe chars act just like numbers here. Needs a value transform
-                case "INTEGER":
-                    n = this.current_token.value;
-                    break;
-                case "REGISTER":
-                    if (accumulators.has(this.current_token.value)) {
-                        postbyte = ACCUMULATOR_POSTBYTE[this.current_token.value];
-                    } else {
-                        this.#error('Expecting value or an accumulator')
+                break;
+            case "IDENTIFIER":
+                let value = this.label_table[this.current_token.value] || this.const_table[this.current_token.value];
+
+                if (value === undefined) {
+
+                    if (this.second_parse) {
+                        this.#error('Unresolved label');
                     }
+                    value = WORD_MIN;
+                }
 
-                    break;
-                case "IDENTIFIER":
-                    let value = this.label_table[this.current_token.value] || this.const_table[this.current_token.value];
+                n = value;
+                break;
+            case 'COMMA':
+                // commas do nothing.
+                break;
+            default:
+                this.#error('Unexpected token')
+                break;
 
-                    if (value === undefined) {
-
-                        if (this.second_parse) {
-                            this.#error('Unresolved label');
-                        }
-                        value = WORD_MIN;
-                    }
-
-                    n = value;
-                    break;
-                default:
-                    this.#error('Unexpected token')
-                    break;
-
-            }
         }
+
         this.#next();
-
-
-
 
         if (this.current_token.type === 'NL') {
 
@@ -447,11 +425,8 @@ export class Assembler {
                 }
 
                 this.pc += op.direct.size;
+                this.#insert_binary(op.direct.code, ...n);
 
-                if (this.second_parse) {
-                    this.#insert_binary(op.direct.code);
-                    this.binary.push(...n); // low byte
-                }
             } else {
 
                 if (op.extended === undefined) {
@@ -459,14 +434,9 @@ export class Assembler {
                 }
 
                 this.pc += op.extended.size;
-
-
-                if (this.second_parse) {
-                    this.#insert_binary(op.extended.code);
-                    this.binary.push(...n); // low byte
-                }
-
+                this.#insert_binary(op.extended.code, ...n);
             }
+
             return;
 
         }
@@ -475,24 +445,14 @@ export class Assembler {
         if (this.current_token.type === 'INDIRECT_END') {
             // handle [n]
             this.pc += (op.indexed.size + 2) // + 2 for the postbyte and arg
-
-            if (this.second_parse) {
-
-                this.#insert_binary(op.indexed.code)
-                this.binary.push(0x9F)
-
-                n = this.#encode_value_as_bytes(n, WORD);
-                if (n.length === 2) {
-                    this.binary.push(...n);
-                } else {
-                    this.binary.push(...n);
-                }
-            }
+            n = this.#encode_value_as_bytes(n, WORD);
+            this.#insert_binary(op.indexed.code, 0x9F, ...n)
             return;
 
         } else if (this.current_token.type === 'COMMA') {
             this.#next();
         }
+
 
         if (this.current_token.type === 'DEC' || this.current_token.type === 'DEC2') {
             if (this.current_token.type === 'DEC' && mode === 'INDIRECT') {
@@ -507,6 +467,7 @@ export class Assembler {
             this.#next();
         }
 
+
         if (this.current_token.type === 'REGISTER') {
 
             if (accumulators.has(this.current_token.value)) {
@@ -514,6 +475,7 @@ export class Assembler {
             }
 
             if (this.current_token.value === 'pcr') {
+
                 if (postbyte !== undefined) {
                     this.#error("PCR should be used with an offset")
                 }
@@ -523,6 +485,7 @@ export class Assembler {
                 } else {
                     postbyte = 0x8D;
                 }
+
 
             } else {
                 register = PB_REGISTERS[this.current_token.value];
@@ -546,6 +509,7 @@ export class Assembler {
             this.#next();
         }
 
+
         if (this.current_token.type === 'INDIRECT_END') {
 
             if (mode !== 'INDIRECT') {
@@ -554,19 +518,13 @@ export class Assembler {
             this.#next();
         }
 
-        if (this.current_token.type !== 'NL') {
-            // console.log(this.current_token);
-            this.#error('Unexpected token');
-        }
-
+        this.#expect('NL', 'Unexpected token')
 
         if (register !== undefined) {
             this.pc += op.indexed.size;
 
             // This is in the case n,R or ,R 
             if (postbyte === undefined) {
-
-
 
                 if (n === 0) {
                     // handle as 1RR00100
@@ -596,6 +554,8 @@ export class Assembler {
                 } else {
                     console.log(this.current_token, "Number not right");
                 }
+
+
             } else {
                 // This must be A,R for accumulator offset
                 // or auto inc/dec
@@ -622,15 +582,12 @@ export class Assembler {
         } else {
 
             this.pc += op.indexed.size;
+            if (mode === 'INDIRECT') {
+                // set 00010000 for the indirect version of the postbyte
+                postbyte = postbyte | 0x10
+            }
 
-
-            // console.log(this.current_token);
-            if (postbyte === 0x8C) {
-
-                if (mode === 'INDIRECT') {
-                    // set 00010000 for the indirect version of the postbyte
-                    postbyte = postbyte | 0x10
-                }
+            if (postbyte === 0x8C || postbyte === 0x9C) {
 
                 this.pc += 1;
                 n = n - this.pc;
@@ -638,12 +595,7 @@ export class Assembler {
 
                 this.#insert_binary(op.indexed.code, postbyte, ...n)
 
-            } else if (postbyte === 0x8D) {
-
-                if (mode === 'INDIRECT') {
-                    // set 00010000 for the indirect version of the postbyte
-                    postbyte = postbyte | 0x10
-                }
+            } else if (postbyte === 0x8D || postbyte === 0x9D) {
 
                 this.pc += 2;
                 n = n - this.pc;
@@ -659,61 +611,55 @@ export class Assembler {
 
 
     #handle_equ(id) {
-        while (this.#next()) {
-
-            if (this.current_token.type === 'INTEGER') {
-                this.const_table[id] = this.current_token.value;
-            } else if (this.current_token.type === 'IDENTIFIER') {
-
-                if (id === null) {
-                    id = this.current_token.value;
-                } else {
-                    this.const_table[id] = this.const_table[this.current_token.value] || this.current_token.value;
-                }
-
-            } else if (this.current_token.value === 'equ' || this.current_token.value === "=") {
-                continue
-            } else if (this.current_token.type === 'COMMA') {
-                id = null;
-                continue
-
-            } else if (this.current_token.type === 'NL') {
-                break;
-            } else {
-                this.#error("Unexpected token in equ directive");
+        while (this.#next().type !== 'NL') {
+            switch (this.current_token.type) {
+                case 'INTEGER':
+                    this.const_table[id] = this.current_token.value;
+                    break;
+                case 'IDENTIFIER':
+                    // Handles identifiers: sets ID if not set, otherwise assigns value to const_table
+                    if (id === null) {
+                        id = this.current_token.value;
+                    } else {
+                        this.const_table[id] = this.const_table[this.current_token.value] || this.current_token.value;
+                    }
+                    break;
+                case 'COMMA':
+                    // Resets the identifier upon encountering a comma
+                    id = null;
+                    break;
+                default:
+                    if (this.current_token.value !== 'equ' && this.current_token.value !== "=") {
+                        this.#error("Unexpected token in equ directive");
+                    }
             }
 
         }
     }
 
     #handle_var() {
-
         this.#next();
 
         let var_size = 0;
 
-        if (this.current_token.type == 'INTEGER') {
+        if (this.current_token.type === 'INTEGER') {
             var_size = this.current_token.value;
-
         }
 
-        while (this.#next()) {
-
-            if (this.current_token.type === 'IDENTIFIER') {
-                // Add label to const_table with the current pc.
-                this.const_table[this.current_token.value] = this.pc;
-                this.pc += Math.abs(var_size);
-                this.#insert_binary(...new Array(Math.abs(var_size)).fill(0))
-
-            } else if (this.current_token.type === 'NL') {
-
-                break;
-            } else if (this.current_token.type === 'COMMA' || this.current_token.type === 'WS') {
-                // Just a separator. Continue to the next token.
-                continue;
-            } else {
-                // Unexpected token. Perhaps handle this as an error or warning.
-                this.#error("Unexpected token after var directive")
+        while (this.#next().type !== 'NL') {
+            switch (this.current_token.type) {
+                case 'IDENTIFIER':
+                    // Adds label to const_table with the current pc and increments pc by var_size
+                    this.const_table[this.current_token.value] = this.pc;
+                    this.pc += Math.abs(var_size);
+                    this.#insert_binary(...new Array(Math.abs(var_size)).fill(0));
+                    break;
+                case 'COMMA':
+                case 'WS':
+                    // Skips separators like commas and whitespace
+                    break;
+                default:
+                    this.#error("Unexpected token after var directive");
             }
         }
     }
@@ -722,11 +668,10 @@ export class Assembler {
         this.#next();
 
         // Expect an integer for fill_byte
-        if (this.current_token.type !== 'INTEGER') {
-            this.#error("Expected byte value after fill directive.");
-            return;
-        }
+        this.#expect('INTEGER', "Expected byte value after fill directive.")
+
         let fill_byte = this.current_token.value;
+
         if (fill_byte < BYTE_MIN || fill_byte > BYTE_MAX) {
             this.#error("Byte value out of range (0-255).");
             return;
@@ -734,17 +679,12 @@ export class Assembler {
 
         // Expect a comma after fill_byte
         this.#next();
-        if (this.current_token.type !== 'COMMA') {
-            this.#error("Expected comma after byte value in fill directive.");
-            return;
-        }
+        this.#expect('COMMA', "Expected comma after byte value in fill directive.")
 
         // Expect an integer for fill_count
         this.#next();
-        if (this.current_token.type !== 'INTEGER') {
-            this.#error("Expected count value after comma in fill directive.");
-            return;
-        }
+        this.#expect('INTEGER', "Expected count value after comma in fill directive.");
+
         let fill_count = this.current_token.value;
 
         this.pc += fill_count;
@@ -762,9 +702,6 @@ export class Assembler {
                     this.#insert_binary(...Array.from(this.current_token.value, char => char.charCodeAt(0)))
                     break;
                 case 'INTEGER':
-                    // this.pc += size;
-
-
                     if (size === BYTE) {
                         this.pc += BYTE; // Size of a byte
                         if (this.second_parse) {
@@ -830,18 +767,15 @@ export class Assembler {
         const output_bytes = []
 
         if (!size) {
-
             size = this.#size_of_value(value)
         }
 
         if (size === BYTE) {
-
             if (value < 0) {
                 value += 0x100;
             }
-
-
             output_bytes.push(value & 0xFF); // Low byte
+
         } else if (size === WORD) {
             if (value < 0) {
                 value += 0x10000;
@@ -862,7 +796,6 @@ export class Assembler {
             // console.log('tp', this.current_token);
             switch (this.current_token.type) {
                 case 'LABEL':
-                    // console.log('top_label', this.current_token, this.pc)
                     if (!this.second_parse) {
                         this.label_table[this.current_token.value] = this.pc;
                     }
@@ -892,12 +825,9 @@ export class Assembler {
     assemble() {
         this.#parse();
         this.second_parse = true;
-        this.f_label_table = this.label_table;
         this.lexer.reset(this.source);
-        this.pc = 0x4000;
+        this.pc = this.base_address;
         this.#parse();
         return this.binary;
     }
 }
-
-
