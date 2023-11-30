@@ -28,7 +28,12 @@ export class Assembler {
         }
     }
 
+
     #insert_binary(...values) {
+
+        if (!this.second_parse) {
+            return;
+        }
 
         for (let value of values) {
 
@@ -95,9 +100,7 @@ export class Assembler {
                 if (this.current_token.type == 'INTEGER') {
                     const num_bytes = Math.abs(this.current_token.value);
                     this.pc += num_bytes;
-                    if (this.second_parse) {
-                        this.binary = this.binary.concat(new Array(num_bytes).fill(0));
-                    }
+                    this.#insert_binary(...new Array(num_bytes).fill(0));
                 }
 
                 break;
@@ -200,6 +203,8 @@ export class Assembler {
 
             this.#insert_binary(op.immediate.code);
 
+            // this.#encode_value_as_bytes()
+
             if (op.immediate.size == 2) {
                 this.binary.push(value & 0xFF);
 
@@ -260,13 +265,10 @@ export class Assembler {
     #handle_inherent() {
         this.pc += BYTE; // I think these instructions are always 1 byte...
 
-        if (this.second_parse) {
-            const code = opcodes.get(this.current_token.value).inherent.code;
-            this.#insert_binary(code);
-        }
+        const code = opcodes.get(this.current_token.value).inherent.code;
+        this.#insert_binary(code);
 
-        this.#next();
-        if (this.current_token.type !== 'NL') {
+        if (this.#next().type !== 'NL') {
             this.#error("Inherent instructions don't take arguments")
         }
     }
@@ -634,10 +636,7 @@ export class Assembler {
                 n = n - this.pc;
                 n = this.#encode_value_as_bytes(n, BYTE);
 
-                if (this.second_parse) {
-                    this.#insert_binary(op.indexed.code, postbyte)
-                    this.binary.push(...n);
-                }
+                this.#insert_binary(op.indexed.code, postbyte, ...n)
 
             } else if (postbyte === 0x8D) {
 
@@ -645,14 +644,11 @@ export class Assembler {
                     // set 00010000 for the indirect version of the postbyte
                     postbyte = postbyte | 0x10
                 }
+
                 this.pc += 2;
                 n = n - this.pc;
                 n = this.#encode_value_as_bytes(n, WORD);
-
-                if (this.second_parse) {
-                    this.#insert_binary(op.indexed.code, postbyte)
-                    this.binary.push(...n);
-                }
+                this.#insert_binary(op.indexed.code, postbyte, ...n);
 
             }
 
@@ -706,14 +702,9 @@ export class Assembler {
             if (this.current_token.type === 'IDENTIFIER') {
                 // Add label to const_table with the current pc.
                 this.const_table[this.current_token.value] = this.pc;
-
-                // Increment the pc by varSize
                 this.pc += Math.abs(var_size);
-                // Handle the second pass for machine code generation
-                if (this.second_parse) {
-                    const reserved_space = new Array(Math.abs(var_size)).fill(0);
-                    this.binary = this.binary.concat(reserved_space);
-                }
+                this.#insert_binary(...new Array(Math.abs(var_size)).fill(0))
+
             } else if (this.current_token.type === 'NL') {
 
                 break;
@@ -757,12 +748,7 @@ export class Assembler {
         let fill_count = this.current_token.value;
 
         this.pc += fill_count;
-
-        // Handle machine code generation in second pass
-        if (this.second_parse) {
-            const fill_data = new Array(fill_count).fill(fill_byte);
-            this.binary = this.binary.concat(fill_data);
-        }
+        this.#insert_binary(...new Array(fill_count).fill(fill_byte))
     }
 
     #handle_data(size) {
@@ -773,13 +759,12 @@ export class Assembler {
             switch (this.current_token.type) {
                 case 'STRING':
                     this.pc += this.current_token.value.length;
-                    if (this.second_parse) {
-                        // Convert the string into an array of ASCII values. 
-                        const asciiValues = Array.from(this.current_token.value, char => char.charCodeAt(0));
-                        this.binary = this.binary.concat(asciiValues);
-                    }
+                    this.#insert_binary(...Array.from(this.current_token.value, char => char.charCodeAt(0)))
                     break;
                 case 'INTEGER':
+                    // this.pc += size;
+
+
                     if (size === BYTE) {
                         this.pc += BYTE; // Size of a byte
                         if (this.second_parse) {
@@ -798,10 +783,7 @@ export class Assembler {
                     break;
                 case 'CHAR':
                     this.pc += BYTE;
-                    if (this.second_parse) {
-                        // Convert the character to its ASCII value and add it to the binary array
-                        this.binary.push(this.current_token.value.charCodeAt(0));
-                    }
+                    this.#insert_binary(this.current_token.value.charCodeAt(0))
                     break;
                 case 'COMMA':
                     // case 'NL':
@@ -841,14 +823,11 @@ export class Assembler {
         }
 
         this.#error(`${value} is too small or large `)
-        // console.log(this.#next());
     }
 
     #encode_value_as_bytes(value, size) {
 
         const output_bytes = []
-
-
 
         if (!size) {
 
