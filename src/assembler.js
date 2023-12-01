@@ -14,7 +14,7 @@ export class Assembler {
         while (true) {
             this.current_token = this.lexer.next();
 
-            // If the current token is undefined, return it (end of file or stream)
+            // If the current token is undefined, return it
             if (!this.current_token) {
                 return;
             }
@@ -386,7 +386,8 @@ export class Assembler {
                 if (accumulators.has(this.current_token.value)) {
                     postbyte = ACCUMULATOR_POSTBYTE[this.current_token.value];
                 } else {
-                    this.#error('Expecting value or an accumulator')
+                    register = this.current_token.value;
+                    // this.#error('Expecting value or an accumulator')
                 }
 
                 break;
@@ -414,6 +415,7 @@ export class Assembler {
 
         this.#next();
 
+        // Handles op value
         if (this.current_token.type === 'NL') {
 
             n = this.#encode_value_as_bytes(n)
@@ -441,19 +443,27 @@ export class Assembler {
 
         }
 
-
+        // handles op [n]
         if (this.current_token.type === 'INDIRECT_END') {
-            // handle [n]
+            if (postbyte) {
+                this.#error("Can't use the form [register]")
+            }
+
+            this.#next();
+            this.#expect('NL', "Unexpected value following statement")
+
             this.pc += (op.indexed.size + 2) // + 2 for the postbyte and arg
             n = this.#encode_value_as_bytes(n, WORD);
             this.#insert_binary(op.indexed.code, 0x9F, ...n)
             return;
+        }
 
-        } else if (this.current_token.type === 'COMMA') {
+        // step forward on comma
+        if (this.current_token.type === 'COMMA') {
             this.#next();
         }
 
-
+        // handles opcode ,--Y sorta thing
         if (this.current_token.type === 'DEC' || this.current_token.type === 'DEC2') {
             if (this.current_token.type === 'DEC' && mode === 'INDIRECT') {
                 this.#error('-R and R+ not allowed in indirect')
@@ -467,7 +477,7 @@ export class Assembler {
             this.#next();
         }
 
-
+        // determins register or if PCR
         if (this.current_token.type === 'REGISTER') {
 
             if (accumulators.has(this.current_token.value)) {
@@ -493,11 +503,12 @@ export class Assembler {
 
         } else {
             this.#error(`Unexpected argument ${this.current_token.text}`)
-
         }
+
 
         this.#next();
 
+        // handles opcode ,y++ sorta thing
         if (this.current_token.type === 'INC' || this.current_token.type === 'INC2') {
             if (this.current_token === 'INC' && mode === 'INDIRECT') {
                 this.#error('-R and R+ not allowed in indirect')
@@ -510,8 +521,8 @@ export class Assembler {
         }
 
 
+        // handles opcode ,y] 
         if (this.current_token.type === 'INDIRECT_END') {
-
             if (mode !== 'INDIRECT') {
                 this.#error("Possibly missing [ at start of arguments");
             }
@@ -521,94 +532,98 @@ export class Assembler {
         this.#expect('NL', 'Unexpected token')
 
         if (register !== undefined) {
-            this.pc += op.indexed.size;
-
-            // This is in the case n,R or ,R 
-            if (postbyte === undefined) {
-
-                if (n === 0) {
-                    // handle as 1RR00100
-                    postbyte = 0x84 | register;
-                } else if ((n >= -16 && n <= 15) && mode !== 'INDIRECT') {
-                    // The value fits in a 5-bit offset, indicating a total of 2 bytes
-                    // should be in the form 0RRnnnnn
-                    // Not available if in indirect mode
-
-                    if (n < 0) { // Checks if the 8th bit is set (for 8-bit numbers)
-                        n = (32 + n) % 32; // Invert all bits and limit to 8 bits
-                    }
-                    postbyte = n | register;
-                    n = 0;
-
-                } else if (n >= -128 && n <= 127) {
-
-                    this.pc += 1 // Adds 1 byte for handling the postbyte
-
-                    postbyte = 0x88 | register;
-
-                } else if (n >= -32768 && n <= 32767) {
-
-                    this.pc += 2 // adds 2 bytes for size + instruction. These do nothing.....
-                    postbyte = 0x89 | register;
-
-                } else {
-                    console.log(this.current_token, "Number not right");
-                }
-
-
-            } else {
-                // This must be A,R for accumulator offset
-                // or auto inc/dec
-                postbyte = postbyte | register;
-
-            }
-
-            if (mode === 'INDIRECT') {
-                // set 00010000 for the indirect version of the postbyte
-                postbyte = postbyte | 0x10
-            }
-
-
-            if (this.second_parse) {
-                this.#insert_binary(op.indexed.code, postbyte)
-
-                if (n === 0) {
-                    return;
-                }
-                n = this.#encode_value_as_bytes(n);
-                this.binary.push(...n);
-            }
-
-        } else {
-
-            this.pc += op.indexed.size;
-            if (mode === 'INDIRECT') {
-                // set 00010000 for the indirect version of the postbyte
-                postbyte = postbyte | 0x10
-            }
-
-            if (postbyte === 0x8C || postbyte === 0x9C) {
-
-                this.pc += 1;
-                n = n - this.pc;
-                n = this.#encode_value_as_bytes(n, BYTE);
-
-                this.#insert_binary(op.indexed.code, postbyte, ...n)
-
-            } else if (postbyte === 0x8D || postbyte === 0x9D) {
-
-                this.pc += 2;
-                n = n - this.pc;
-                n = this.#encode_value_as_bytes(n, WORD);
-                this.#insert_binary(op.indexed.code, postbyte, ...n);
-
-            }
-
+            this.#handle_register_op(op, mode, n, postbyte, register);
+            return
 
         }
 
+        this.#handle_pcr(op, mode, postbyte, n);
     }
 
+    #handle_pcr(op, mode, postbyte, n) {
+        this.pc += op.indexed.size;
+        if (mode === 'INDIRECT') {
+            // set 00010000 for the indirect version of the postbyte
+            postbyte = postbyte | 0x10;
+        }
+
+        if (postbyte === 0x8C || postbyte === 0x9C) {
+
+            this.pc += 1;
+            n = n - this.pc;
+            n = this.#encode_value_as_bytes(n, BYTE);
+
+            this.#insert_binary(op.indexed.code, postbyte, ...n);
+
+        } else if (postbyte === 0x8D || postbyte === 0x9D) {
+
+            this.pc += 2;
+            n = n - this.pc;
+            n = this.#encode_value_as_bytes(n, WORD);
+            this.#insert_binary(op.indexed.code, postbyte, ...n);
+
+        }
+    }
+
+    #handle_register_op(op, mode, n, postbyte, register) {
+        this.pc += op.indexed.size;
+
+        // This is in the case n,R or ,R 
+        if (postbyte === undefined) {
+
+            if (n === 0) {
+                // handle as 1RR00100
+                postbyte = 0x84 | register;
+            } else if ((n >= -16 && n <= 15) && mode !== 'INDIRECT') {
+                // The value fits in a 5-bit offset, indicating a total of 2 bytes
+                // should be in the form 0RRnnnnn
+                // Not available if in indirect mode
+
+                if (n < 0) { // Checks if the 8th bit is set (for 8-bit numbers)
+                    n = (32 + n) % 32; // Invert all bits and limit to 8 bits
+                }
+                postbyte = n | register;
+                n = 0;
+
+            } else if (n >= -128 && n <= 127) {
+
+                this.pc += 1 // Adds 1 byte for handling the postbyte
+
+                postbyte = 0x88 | register;
+
+            } else if (n >= -32768 && n <= 32767) {
+
+                this.pc += 2 // adds 2 bytes for size + instruction. These do nothing.....
+                postbyte = 0x89 | register;
+
+            } else {
+                console.log(this.current_token, "Number not right");
+            }
+
+
+        } else {
+            // This must be A,R for accumulator offset
+            // or auto inc/dec
+            postbyte = postbyte | register;
+
+        }
+
+        if (mode === 'INDIRECT') {
+            // set 00010000 for the indirect version of the postbyte
+            postbyte = postbyte | 0x10
+        }
+
+
+        if (this.second_parse) {
+            this.#insert_binary(op.indexed.code, postbyte)
+
+            if (n === 0) {
+                return;
+            }
+            n = this.#encode_value_as_bytes(n);
+            this.binary.push(...n);
+        }
+    }
 
     #handle_equ(id) {
         while (this.#next().type !== 'NL') {
@@ -777,6 +792,7 @@ export class Assembler {
             output_bytes.push(value & 0xFF); // Low byte
 
         } else if (size === WORD) {
+
             if (value < 0) {
                 value += 0x10000;
             }
