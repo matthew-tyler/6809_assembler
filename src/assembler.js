@@ -65,6 +65,7 @@ export class Assembler {
             this.source = new_source.concat('\n')
         }
 
+        this.running = true;
         this.lexer.reset(this.source);
         this.label_table = {};
         this.const_table = {}
@@ -77,7 +78,7 @@ export class Assembler {
     }
 
     halt() {
-        // to do 
+        this.running = false;
     }
 
     #handle_directive() {
@@ -89,8 +90,7 @@ export class Assembler {
                 this.pc = Math.abs(this.current_token.value);
                 break;
             case 'end':
-                // just end the assembler here. 
-                this.halt(); // not implemented
+                this.halt();
                 break;
             case 'setdp':
             case 'direct':
@@ -386,7 +386,7 @@ export class Assembler {
                 if (accumulators.has(this.current_token.value)) {
                     postbyte = ACCUMULATOR_POSTBYTE[this.current_token.value];
                 } else {
-                    register = this.current_token.value;
+                    register = PB_REGISTERS[this.current_token.value];
                     // this.#error('Expecting value or an accumulator')
                 }
 
@@ -417,6 +417,12 @@ export class Assembler {
 
         // Handles op value
         if (this.current_token.type === 'NL') {
+
+            if (register !== undefined) {
+                this.#handle_register_op(op, mode, n, postbyte, register);
+                return
+
+            }
 
             n = this.#encode_value_as_bytes(n)
 
@@ -770,7 +776,7 @@ export class Assembler {
 
         if (value >= -128 && value <= 127) {
             return BYTE;
-        } else if (value >= -32768 && value <= 32767) {
+        } else if (value >= -32768 && value <= 65536) {
             return WORD;
         }
 
@@ -806,7 +812,7 @@ export class Assembler {
 
     #parse() {
 
-        while (this.#next()) {
+        while (this.#next() && this.running) {
             // This switch statement should be the first token of each statement 
             // while helper functions will deal with each statement.
             // console.log('tp', this.current_token);
@@ -841,6 +847,7 @@ export class Assembler {
     assemble() {
         this.#parse();
         this.second_parse = true;
+        this.running = true;
         this.lexer.reset(this.source);
         this.pc = this.base_address;
         this.#parse();

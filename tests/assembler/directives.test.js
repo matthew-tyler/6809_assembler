@@ -1,5 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { Assembler } from "../../src/assembler";
+import { test_result } from "./utils";
 
 const test_asm = new Assembler('');
 
@@ -7,7 +8,29 @@ const test_asm = new Assembler('');
 
 describe('Compiler Directives', () => {
 
+    test('ORG', () => {
+        const test_input = `
+        start:
+        jsr libRoutine01     ;  jsr $f000
+      ; ...
+      org $F000
+      
+      libRoutine01:
+        pshs d,x
+    `
+        const expected_binary = [
+            0xBD,
+            0xF0,
+            0x00,
+            0x34,
+            0x16,
+        ]
 
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble();
+        test_result(result, expected_binary);
+    })
 
 
     test('CONST, EQU, =', () => {
@@ -68,21 +91,40 @@ describe('Compiler Directives', () => {
         ]
         test_asm.reset(test_input);
 
-        const result = test_asm.assemble()
-
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        const result = test_asm.assemble();
+        test_result(result, expected_binary);
     })
 
 
     test('END', () => {
 
+        const test_input =
+            `
+        finish:
+            clra
+            rts    
+
+            ; Some reminders here ...
+
+            end
+
+            abx
+
+            More reminders here ..
+        `
+
+        const expected_binary = [
+            0x4F,
+            0x39,
+        ]
+
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+        test_result(result, expected_binary);
     })
 
-    test('VAR', () => {
+    test.todo('VAR', () => {
 
     })
 
@@ -107,13 +149,9 @@ describe('Compiler Directives', () => {
 
         test_asm.reset(test_input);
 
-        const result = test_asm.assemble()
+        const result = test_asm.assemble();
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
     test('FILL ', () => {
@@ -137,13 +175,9 @@ describe('Compiler Directives', () => {
         ]
         test_asm.reset(test_input);
 
-        const result = test_asm.assemble()
+        const result = test_asm.assemble();
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
     test('DB, FCB, FCC, .BYTE ', () => {
@@ -175,11 +209,7 @@ describe('Compiler Directives', () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
     test('DW , FDB, .WORD', () => {
@@ -210,15 +240,13 @@ describe('Compiler Directives', () => {
             0x10
         ]
         test_asm.reset(test_input);
+        const result = test_asm.assemble();
 
-        const result = test_asm.assemble()
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
 
 
 })
+
+

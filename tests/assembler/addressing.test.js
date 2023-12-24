@@ -1,5 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { Assembler } from "../../src/assembler";
+import { print_hex, test_result } from "./utils";
+
 
 const test_asm = new Assembler('');
 
@@ -23,14 +25,9 @@ describe("Immediate Addressing Modes", () => {
         const expected_binary = [0x84, 0x32, 0x85, 0x14, 0xC6, 0x7C]
         test_asm.reset(test_input);
 
-        const result = test_asm.assemble()
+        const result = test_asm.assemble();
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     /**
@@ -48,11 +45,7 @@ describe("Immediate Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
     /**
@@ -76,12 +69,7 @@ describe("Immediate Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
 
@@ -112,12 +100,7 @@ describe("Direct Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
 })
@@ -154,12 +137,7 @@ describe("Extended Addressing Modes", () => {
         const result = test_asm.assemble()
 
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
 })
@@ -232,12 +210,7 @@ describe("Inherent Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
 
 
     })
@@ -246,6 +219,38 @@ describe("Inherent Addressing Modes", () => {
 
 
 describe("Indexed Addressing Modes", () => {
+
+
+    test("R", () => {
+
+        const test_input = `
+        leax y
+        leay x
+        leax u
+        leax x
+        leay s
+        `
+        const expected_binary = [
+            0x30,
+            0xA4,
+            0x31,
+            0x84,
+            0x30,
+            0xC4,
+            0x30,
+            0x84,
+            0x31,
+            0xE4
+        ]
+        test_asm.reset(test_input);
+
+        const result = test_asm.assemble()
+        print_hex(expected_binary)
+        print_hex(result)
+
+        test_result(result, expected_binary);
+    })
+
 
     test(",R", () => {
 
@@ -272,12 +277,7 @@ describe("Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
 
@@ -306,11 +306,7 @@ describe("Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
     test("8 bit n,R", () => {
@@ -344,11 +340,7 @@ describe("Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
 
@@ -388,11 +380,7 @@ describe("Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
 
@@ -421,12 +409,7 @@ describe("Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     test("Auto inc/dec", () => {
@@ -451,12 +434,7 @@ describe("Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     test("8 bit n,PCR", () => {
@@ -480,12 +458,7 @@ describe("Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     test("16 bit n,PCR", () => {
@@ -519,12 +492,7 @@ describe("Indexed Addressing Modes", () => {
         const result = test_asm.assemble()
 
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 })
 
@@ -556,12 +524,7 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
 
@@ -598,11 +561,7 @@ describe("Indirect Indexed Addressing Modes", () => {
 
 
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
 
@@ -642,11 +601,7 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
     })
 
 
@@ -676,12 +631,7 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     test("Indirect Auto inc/dec", () => {
@@ -702,12 +652,7 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     test("8 bit [n,PCR]", () => {
@@ -729,12 +674,7 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     test("16 bit [n,PCR]", () => {
@@ -768,12 +708,7 @@ describe("Indirect Indexed Addressing Modes", () => {
         const result = test_asm.assemble()
 
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
     })
 
     test("[n]", () => {
@@ -787,20 +722,9 @@ describe("Indirect Indexed Addressing Modes", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
+        test_result(result, expected_binary);
 
 
     })
 })
 
-
-
-function print_hex(arr) {
-    const hex_array = arr.map(num => num.toString(16).padStart(2, '0').toUpperCase());
-    console.log(hex_array.join(' '));
-}

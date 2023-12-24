@@ -1,5 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { Assembler } from "../../src/assembler";
+import { test_result } from "./utils";
+
 
 const test_asm = new Assembler('');
 
@@ -41,13 +43,7 @@ describe("Full Programs", () => {
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
-
-
+        test_result(result, expected_binary);
     })
 
     test("Clear Screen", () => {
@@ -152,11 +148,7 @@ clearS1:
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
 
 
 
@@ -206,17 +198,9 @@ displayLoop:
 
         const result = test_asm.assemble()
 
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        test_result(result, expected_binary);
 
 
     })
 })
 
-function print_hex(arr) {
-    const hex_array = arr.map(num => num.toString(16).padStart(2, '0').toUpperCase());
-    console.log(hex_array.join(' '));
-}

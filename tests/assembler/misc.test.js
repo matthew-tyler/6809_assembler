@@ -1,5 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { Assembler } from "../../src/assembler";
+import { test_result } from "./utils";
+
 
 const test_asm = new Assembler('');
 
@@ -42,13 +44,8 @@ describe('Misc Tests', () => {
 
         test_asm.reset(test_input);
 
-        const result = test_asm.assemble()
-
-        expect(result.length).toBe(expected_binary.length);
-
-        result.forEach((element, index) => {
-            expect(element).toBe(expected_binary[index]);
-        });
+        const result = test_asm.assemble();
+        test_result(result, expected_binary);
     })
 
 });
