@@ -2,13 +2,26 @@ import { lexer } from "./lexer";
 import { BYTE, BYTE_MAX, WORD_MIN, WORD_MAX, PB_REGISTERS, ACCUMULATOR_POSTBYTE, INC_DEC, inherent_only, relative_only, accumulators, psh, register_only, WORD, BYTE_MIN, opcodes, INTER_REGISTER_POSTBYTE, PSH_PUL_POSTBYTE } from "./constants";
 
 
+/**
+ * A JavaScript-based assembler for the 6809 8-bit CPU. This class provides
+ * functionality to convert assembly language code into machine code.
+ */
 export class Assembler {
 
+    /**
+     * Creates an instance of the Assembler.
+     * @param {string} source - The assembly source code as a string.
+     * @param {number} [base_address=0x4000] - The base address for the assembly. Default 0x4000
+     */
     constructor(source, base_address) {
         this.lexer = lexer;
         this.reset(source, base_address)
     }
 
+    /**
+     * Retrieves the next token from the lexer, skipping comments and whitespace.
+     * @private
+     */
     #next() {
         // Loop indefinitely until a non-comment and non-whitespace token is found
         while (true) {
@@ -28,7 +41,11 @@ export class Assembler {
         }
     }
 
-
+    /**
+     * Inserts binary values into the binary array if in the second parse phase.
+     * @param  {...any} values - The values to be inserted.
+     * @private
+     */
     #insert_binary(...values) {
 
         if (!this.second_parse) {
@@ -48,16 +65,32 @@ export class Assembler {
 
     }
 
+    /**
+     * Logs an error message with the current token's context.
+     * @param {string} message - The error message to log.
+     * @private
+     */
     #error(message) {
         console.log(this.lexer.formatError(this.current_token, message));
     }
 
+    /**
+     * Expects a specific token type and throws an error with a custom message if not found.
+     * @param {string} token_type - The expected type of the token.
+     * @param {string} error_message - The error message if the expectation is not met.
+     * @private
+     */
     #expect(token_type, error_message) {
         if (this.current_token.type !== token_type) {
             this.#error(error_message)
         }
     }
 
+    /**
+     * Resets the assembler with new source code and/or base address.
+     * @param {string} new_source - The new source code for the assembler.
+     * @param {number} [base_address=0x4000] - The base address for the assembly. Default 0x4000
+     */
     reset(new_source, base_address) {
         this.halt();
 
@@ -77,10 +110,18 @@ export class Assembler {
         this.second_parse = false;
     }
 
+
+    /**
+     * Halts the execution of the assembler.
+     */
     halt() {
         this.running = false;
     }
 
+    /**
+     * Handles assembly directives.
+     * @private
+     */
     #handle_directive() {
         switch (this.current_token.value) {
             case 'org':
@@ -130,6 +171,11 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles the processing of the current opcode.
+     * Depending on the opcode type, it delegates to the appropriate handler function.
+     * @private
+     */
     #handle_opcode() {
 
         if (inherent_only.has(this.current_token.value)) {
@@ -168,6 +214,14 @@ export class Assembler {
 
     }
 
+
+    /**
+     * Handles immediate addressing mode of operation.
+     * It processes the immediate value and inserts the corresponding binary code.
+     * @param {Object} op - The operation details object.
+     * @param {string} mnemonic - The mnemonic of the current opcode.
+     * @private
+     */
     #handle_immediate(op, mnemonic) {
         if (op.immediate === undefined) {
             this.#error(`Immediate addressing mode not allowed with ${mnemonic}`);
@@ -220,6 +274,13 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles direct addressing mode of operation.
+     * It processes the operand for direct addressing mode and inserts the corresponding binary code.
+     * @param {Object} op - The operation details object.
+     * @param {string} mode - The addressing mode ('DIRECT' or 'EXT_DIR').
+     * @private
+     */
     #handle_direct(op, mode) {
         // direct in the form op < or > then n.
         const n = this.#value_token(this.#next());
@@ -265,6 +326,11 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles inherent addressing mode. It assumes these instructions are always one byte and
+     * inserts the corresponding binary code for the opcode on the second parse.
+     * @private
+     */
     #handle_inherent() {
         this.pc += BYTE; // I think these instructions are always 1 byte...
 
@@ -274,6 +340,11 @@ export class Assembler {
         this.#expect('NL', "Instruction not expecting arguments")
     }
 
+    /**
+     * Handles relative addressing mode. This method calculates the relative offset
+     * for branch instructions and inserts the corresponding binary code.
+     * @private
+     */
     #handle_relative() {
         const instruction = opcodes.get(this.current_token.value);
 
@@ -314,6 +385,12 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles operations that work only with registers, such as 'tfr' and 'exg'.
+     * It processes the opcode and the source and destination registers, then
+     * constructs and inserts the binary code for these operations.
+     * @private
+     */
     #handle_register_only() {
         // handle tfr and exg 
 
@@ -343,6 +420,11 @@ export class Assembler {
 
     }
 
+    /**
+     * Handles push and pull operations for the CPU stack. This method reads the
+     * opcode and register list, calculates the postbyte, and inserts the binary code.
+     * @private
+     */
     #handle_psh_pul() {
         const psh_reg = this.current_token.value.charAt(3); // The magic number is just the final char of pshs/puls/pshu/pulu
         const opcode = opcodes.get(this.current_token.value).immediate.code;
@@ -371,6 +453,13 @@ export class Assembler {
         this.#insert_binary(opcode, postbyte);
     }
 
+    /**
+     * Handles indexed addressing mode. This method processes the operand and
+     * addressing mode for indexed operations and constructs the binary code on the second parse.
+     * @param {Object} op - The operation details object.
+     * @param {string} mode - The addressing mode ('DIRECT', 'INDIRECT', etc.).
+     * @private
+     */
     #handle_indexed(op, mode) {
 
         let n = 0;
@@ -546,6 +635,15 @@ export class Assembler {
         this.#handle_pcr(op, mode, postbyte, n);
     }
 
+    /**
+     * Handles program counter relative addressing. This method calculates the offset
+     * from the program counter and constructs the binary code for PCR addressing.
+     * @param {Object} op - The operation details object.
+     * @param {string} mode - The addressing mode.
+     * @param {number} postbyte - The postbyte value calculated for PCR addressing.
+     * @param {number} n - The numerical value representing the offset or address.
+     * @private
+     */
     #handle_pcr(op, mode, postbyte, n) {
         this.pc += op.indexed.size;
         if (mode === 'INDIRECT') {
@@ -571,6 +669,17 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles operations specific to register-to-register operations. This method
+     * calculates the postbyte for register-specific operations and constructs the
+     * binary code accordingly.
+     * @param {Object} op - The operation details object.
+     * @param {string} mode - The addressing mode.
+     * @param {number} n - The numerical value representing the offset or address.
+     * @param {number} postbyte - The postbyte value for the operation.
+     * @param {number} register - The register code for the operation.
+     * @private
+     */
     #handle_register_op(op, mode, n, postbyte, register) {
         this.pc += op.indexed.size;
 
@@ -631,6 +740,12 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles the EQU directive for setting constants.
+     * It assigns integer values or other constants to identifiers in the const_table.
+     * @param {string|null} id - The identifier for the constant being set.
+     * @private
+     */
     #handle_equ(id) {
         while (this.#next().type !== 'NL') {
             switch (this.current_token.type) {
@@ -658,6 +773,11 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles the VAR directive for defining variables.
+     * It allocates space for variables and sets their addresses in the const_table.
+     * @private
+     */
     #handle_var() {
         this.#next();
 
@@ -685,6 +805,11 @@ export class Assembler {
         }
     }
 
+    /**
+     * Handles the FILL directive for initializing a block of memory with a value.
+     * It fills a specified number of bytes with a given byte value.
+     * @private
+     */
     #handle_fill() {
         this.#next();
 
@@ -712,6 +837,12 @@ export class Assembler {
         this.#insert_binary(...new Array(fill_count).fill(fill_byte))
     }
 
+    /**
+     * Handles the data directives for defining byte or word data.
+     * It inserts the specified data into the binary output.
+     * @param {number} size - The size of the data (BYTE or WORD).
+     * @private
+     */
     #handle_data(size) {
         //size is either a byte (1) or word (2)
         while (this.#next().type !== 'NL') {
@@ -754,6 +885,13 @@ export class Assembler {
         }
     }
 
+    /**
+     * Extracts and encodes the value from a token into bytes.
+     * It is used to process CHAR, INTEGER, and IDENTIFIER tokens.
+     * @param {Object} token - The token from which to extract the value.
+     * @returns {number[]} The encoded value as an array of bytes.
+     * @private
+     */
     #value_token(token) {
 
         switch (token.type) {
@@ -772,6 +910,13 @@ export class Assembler {
         }
     }
 
+    /**
+     * Determines the size of a value in bytes.
+     * It checks if the value fits within a byte or requires a word.
+     * @param {number} value - The value to check.
+     * @returns {number} The size of the value (BYTE or WORD).
+     * @private
+     */
     #size_of_value(value) {
 
         if (value >= -128 && value <= 127) {
@@ -783,6 +928,14 @@ export class Assembler {
         this.#error(`${value} is too small or large `)
     }
 
+    /**
+     * Encodes a value into an array of bytes based on the specified size.
+     * It converts a given value into its byte or word representation.
+     * @param {number} value - The value to encode.
+     * @param {number} [size] - The size of the value in bytes (BYTE or WORD).
+     * @returns {number[]} The encoded value as an array of bytes.
+     * @private
+     */
     #encode_value_as_bytes(value, size) {
 
         const output_bytes = []
@@ -810,6 +963,11 @@ export class Assembler {
         return output_bytes;
     }
 
+    /**
+     * Parses the source code and performs the first pass of assembly.
+     * It interprets labels, directives, opcodes, and identifiers.
+     * @private
+     */
     #parse() {
 
         while (this.#next() && this.running) {
@@ -838,12 +996,21 @@ export class Assembler {
         }
     }
 
+    /**
+     * Prints the binary output in hexadecimal format.
+     * It is useful for debugging and verifying the assembled code.
+     * @param {number[]} arr - The array of byte values to print.
+     */
     print_hex(arr) {
         const hex_array = arr.map(num => num.toString(16).padStart(2, '0').toUpperCase());
         console.log(hex_array.join(' '));
     }
 
 
+    /**
+     * Parses the assembly source code and assembles it into machine code.
+     * @returns {number[]} The assembled machine code as an array of byte values.
+     */
     assemble() {
         this.#parse();
         this.second_parse = true;
